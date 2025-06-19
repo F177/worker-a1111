@@ -3,15 +3,16 @@ import time
 import runpod
 import requests
 from requests.adapters import HTTPAdapter, Retry
-import sys
 
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
 
+# Sessão com retry para lidar com erros intermitentes
 automatic_session = requests.Session()
 retries = Retry(total=10, backoff_factor=0.1, status_forcelist=[502, 503, 504])
 automatic_session.mount('http://', HTTPAdapter(max_retries=retries))
 
 def wait_for_service(url):
+    """Espera o serviço A1111 estar pronto para receber requisições."""
     retries = 0
     while True:
         try:
@@ -24,13 +25,27 @@ def wait_for_service(url):
         time.sleep(0.2)
 
 def run_inference(inference_request):
-    response = automatic_session.post(url=f'{LOCAL_URL}/txt2img', json=inference_request, timeout=600)
+    """Executa a geração de imagem via txt2img."""
+    response = automatic_session.post(
+        url=f'{LOCAL_URL}/txt2img',
+        json=inference_request,
+        timeout=600
+    )
     return response.json()
 
 def handler(event):
+    """Função principal chamada pela infra do RunPod."""
     result = run_inference(event["input"])
-    print("Job executado. Finalizando processo.")
-    os._exit(0)  # Encerra imediatamente TODO o processo, acionando o trap no start.sh
+
+    # Verifica se está em ambiente de teste da plataforma
+    in_test = os.environ.get("RUNPOD_TEST_ENVIRONMENT", "false").lower() == "true"
+
+    if not in_test:
+        print("Job finalizado. Encerrando processo para liberar VRAM.")
+        os._exit(0)
+    else:
+        print("Ambiente de teste detectado. Mantendo processo vivo.")
+
     return result
 
 if __name__ == "__main__":
