@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------- #
-#                         Stage 1: Download the mod3els                         #
+#                         Stage 1: Download the models                         #
 # ---------------------------------------------------------------------------- #
 FROM alpine/git:2.43.0 as download
 
@@ -20,12 +20,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Dependências do sistema
 RUN apt-get update && \
     apt install -y \
     fonts-dejavu-core rsync git jq moreutils aria2 wget libgoogle-perftools-dev libtcmalloc-minimal4 procps libgl1 libglib2.0-0 && \
     apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && apt-get clean -y
 
-# Clona e prepara o A1111
+# Clonar e preparar o Automatic1111
 RUN --mount=type=cache,target=/root/.cache/pip \
     git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git && \
     cd stable-diffusion-webui && \
@@ -37,17 +38,20 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Copia o modelo
 COPY --from=download /model.safetensors /model.safetensors
 
-# Instala dependências do handler
+# Copiar dependências e instalar
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements.txt
 
-# Copia o input de teste (RunPod test job)
+# Copia o arquivo de input de teste para o RunPod
 COPY test_input.json .
 
-# Copia os arquivos do handler (handler.py, start.sh, etc.)
-ADD src .
+# Copia os scripts da pasta src/
+COPY src/handler.py /handler.py
+COPY src/start.sh /start.sh
 
-# Permissão e startup
+# Dá permissão de execução ao script de startup
 RUN chmod +x /start.sh
+
+# Inicia o container com o script principal
 CMD exec /start.sh
