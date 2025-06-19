@@ -2,22 +2,21 @@
 
 echo "Worker Iniciado"
 
-# Função que será executada na saída do script
+# 1. Função de limpeza AGRESSIVA
+# Esta função usa 'pkill' para forçar o encerramento de todos os processos do A1111.
 cleanup() {
-    echo "Recebido sinal de saída. Desligando o servidor A1111 (PID: $A1111_PID)..."
-    # Envia o sinal de término (SIGTERM) para o processo do A1111
-    # O 'kill 0' garante que todo o grupo de processos seja encerrado, caso o A1111 crie filhos.
-    kill -s SIGTERM 0
-    echo "Sinal de término enviado. Aguardando finalização..."
-    wait $A1111_PID
-    echo "Servidor A1111 desligado."
+    echo "Recebido sinal de saída. Forçando o desligamento de todos os processos A1111..."
+    # pkill -f "launch.py" -> Procura por qualquer processo cujo comando contenha "launch.py".
+    # -9 -> Envia o sinal SIGKILL, que não pode ser ignorado. É a forma mais forte de encerrar um processo.
+    pkill -f -9 "launch.py"
+    echo "Processos A1111 finalizados à força."
 }
 
-# O comando 'trap' registra a função 'cleanup' para ser executada quando o script
-# receber um sinal para terminar (EXIT, SIGINT, SIGTERM).
+# 2. Armar a armadilha (trap)
+# A lógica do trap permanece a mesma. Ele executará a nossa nova função 'cleanup' na saída.
 trap cleanup EXIT SIGINT SIGTERM
 
-# Inicia o servidor A1111 em segundo plano
+# 3. Iniciar o A1111 em segundo plano
 echo "Iniciando API do A1111..."
 python /stable-diffusion-webui/launch.py \
     --xformers \
@@ -35,13 +34,7 @@ python /stable-diffusion-webui/launch.py \
     --no-hashing \
     --no-download-sd-model &
 
-# Captura o Process ID (PID) do servidor A1111
-A1111_PID=$!
-echo "API do A1111 iniciada com PID: $A1111_PID"
-
-# Inicia o handler do Python e espera ele terminar.
-# Não usamos 'exec' aqui, pois o script precisa continuar existindo para que o 'trap' funcione.
+# 4. Iniciar o handler.py e esperar
+# Não precisamos mais capturar o PID, pois o pkill o encontrará pelo nome.
+echo "API do A1111 iniciada. Iniciando o handler.py..."
 python /handler.py
-
-# Quando o handler.py terminar, o script chegará ao fim, o que acionará o 'trap EXIT',
-# chamando a função 'cleanup' e garantindo que o processo do A1111 seja encerrado.
