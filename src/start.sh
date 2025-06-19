@@ -26,5 +26,5 @@ python /stable-diffusion-webui/webui.py \
     --no-download-sd-model &
 
 # Immediately start the handler (NOT RECOMMENDED)
-echo "Starting RunPod Handler without health check..."
+echo "Starting RunPod Handler without health check...."
 python -u /handler.py
