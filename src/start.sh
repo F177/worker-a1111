@@ -1,30 +1,33 @@
 #!/usr/bin/env bash
 
-echo "Worker Initiated"
+echo "Worker Iniciado"
 
-# Start the WebUI API in the background
-echo "Starting Automatic1111 API..."
+# 1. Otimização de Memória (TCMalloc)
+echo "Configurando TCMalloc..."
 TCMALLOC="$(ldconfig -p | grep -Po "libtcmalloc.so.\d" | head -n 1)"
 export LD_PRELOAD="${TCMALLOC}"
 export PYTHONUNBUFFERED=true
 
-# Launch the webui.py script with corrected arguments
-python /stable-diffusion-webui/webui.py \
+# 2. Iniciar a API do Automatic1111 em segundo plano com todas as otimizações
+# O caminho do modelo foi ajustado para /model.safetensors para ser compatível com seu Dockerfile.
+echo "Iniciando API do Automatic1111..."
+python /stable-diffusion-webui/launch.py \
     --xformers \
-    --no-half-vae \
-    --skip-python-version-check \
-    --skip-torch-cuda-test \
-    --skip-install \
-    --ckpt /model.safetensors \
     --opt-sdp-attention \
-    --disable-safe-unpickle \
-    --port 3000 \
+    --no-half-vae \
     --api \
     --nowebui \
-    --skip-version-check \
+    --port 3000 \
+    --disable-safe-unpickle \
     --no-hashing \
-    --no-download-sd-model &
+    --no-download-sd-model \
+    --skip-python-version-check \
+    --skip-torch-cuda-test \
+    --skip-version-check \
+    --skip-install \
+    --ckpt /model.safetensors &
 
-# Immediately start the handler (NOT RECOMMENDED)
-echo "Starting RunPod Handler without health check...."
-python -u /handler.py
+# 3. Iniciar o Handler do RunPod com 'exec'
+# Isto garante que o container desligue corretamente.
+echo "Iniciando o handler do RunPod..."
+exec python /handler.py
