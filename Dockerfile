@@ -3,8 +3,6 @@
 # ---------------------------------------------------------------------------- #
 FROM alpine/git:2.43.0 as download
 
-# NOTE: CivitAI usually requires an API token, so you need to add it in the header
-#       of the wget command if you're using a model from CivitAI.s
 RUN apk add --no-cache wget && \
     wget -q -O /model.safetensors https://huggingface.co/XpucT/Deliberate/resolve/main/Deliberate_v6.safetensors
 
@@ -27,6 +25,7 @@ RUN apt-get update && \
     fonts-dejavu-core rsync git jq moreutils aria2 wget libgoogle-perftools-dev libtcmalloc-minimal4 procps libgl1 libglib2.0-0 && \
     apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && apt-get clean -y
 
+# Clona e prepara o A1111
 RUN --mount=type=cache,target=/root/.cache/pip \
     git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git && \
     cd stable-diffusion-webui && \
@@ -35,16 +34,20 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements_versions.txt && \
     python -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
 
+# Copia o modelo
 COPY --from=download /model.safetensors /model.safetensors
 
-# install dependencies
+# Instala dependências do handler
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements.txt
 
+# Copia o input de teste (RunPod test job)
 COPY test_input.json .
 
+# Copia os arquivos do handler (handler.py, start.sh, etc.)
 ADD src .
 
+# Permissão e startup
 RUN chmod +x /start.sh
-CMD /start.sh
+CMD exec /start.sh
