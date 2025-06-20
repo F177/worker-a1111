@@ -1,7 +1,7 @@
-import time
 import runpod
 import requests
 from requests.adapters import HTTPAdapter, Retry
+import time
 
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
 
@@ -10,55 +10,40 @@ retries = Retry(total=10, backoff_factor=0.1, status_forcelist=[502, 503, 504])
 automatic_session.mount('http://', HTTPAdapter(max_retries=retries))
 
 
-# ---------------------------------------------------------------------------- #
-#                              Automatic Functions                             #
-# ---------------------------------------------------------------------------- #
 def wait_for_service(url):
-    """
-    Check if the service is ready to receive requests.
-    """
-    retries = 0
-
+    """Verifica se o serviço A1111 está pronto."""
     while True:
         try:
             requests.get(url, timeout=120)
+            print("Serviço A1111 está pronto.")
             return
         except requests.exceptions.RequestException:
-            retries += 1
-
-            # Only log every 15 retries so the logs don't get spammed
-            if retries % 15 == 0:
-                print("Service not ready yet. Retrying...")
+            print("Serviço ainda não está pronto, tentando novamente...")
+            time.sleep(2)
         except Exception as err:
-            print("Error: ", err)
-
-        time.sleep(0.2)
+            print("Erro ao esperar pelo serviço: ", err)
+            time.sleep(2)
 
 
 def run_inference(inference_request):
-    """
-    Run inference on a request.
-    """
+    """Roda a inferência e retorna o resultado."""
     response = automatic_session.post(url=f'{LOCAL_URL}/txt2img',
                                       json=inference_request, timeout=600)
     return response.json()
 
 
-# ---------------------------------------------------------------------------- #
-#                                RunPod Handler                                #
-# ---------------------------------------------------------------------------- #
 def handler(event):
     """
-    This is the handler function that will be called by the serverless.
+    Função principal chamada pelo RunPod.
+    Apenas executa o trabalho e retorna o resultado. Nada mais.
     """
-
-    json = run_inference(event["input"])
-
-    # return the output that you want to be returned like pre-signed URLs to output artifacts
-    return json
+    print("Job recebido. Iniciando a geração...")
+    json_output = run_inference(event["input"])
+    print("Geração finalizada. Retornando o resultado para a plataforma.")
+    return json_output
 
 
 if __name__ == "__main__":
     wait_for_service(url=f'{LOCAL_URL}/sd-models')
-    print("WebUI API Service is ready. Starting RunPod Serverless...")
+    print("Iniciando o handler do RunPod...")
     runpod.serverless.start({"handler": handler})
