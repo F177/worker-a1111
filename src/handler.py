@@ -33,8 +33,9 @@ def wait_for_service(url):
             time.sleep(2)
 
 def run_inference(inference_request):
-    """Roda a inferência."""
-    response = automatic_session.post(f'{LOCAL_URL}/txt2img', json=inference_request, timeout=600)
+    """Roda a inferência com timeout aumentado."""
+    # Aumentado para 900s (15 minutos) para dar tempo de carregar o modelo na primeira vez.
+    response = automatic_session.post(f'{LOCAL_URL}/txt2img', json=inference_request, timeout=900)
     response.raise_for_status()
     return response.json()
 
@@ -50,33 +51,25 @@ def handler(event):
         print("Geração finalizada. Retornando o resultado para a plataforma.")
         return json_output
     finally:
-        # Este bloco é executado DEPOIS que o 'return' acima é concluído.
-        # Ele desliga o servidor A1111 e depois o próprio script.
         print("Iniciando autodestruição do worker...")
         if a1111_process:
             os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
-        # sys.exit() encerra o processo Python de forma limpa.
-        # Como é o processo principal (devido ao 'exec' no start.sh), o container desliga.
         sys.exit(0)
 
 # --- PONTO DE ENTRADA PRINCIPAL ---
 if __name__ == "__main__":
     try:
-        # Inicia o servidor A1111 como um processo filho
         print("Iniciando o servidor A1111 em segundo plano...")
         a1111_process = subprocess.Popen(A1111_COMMAND, preexec_fn=os.setsid)
 
-        # Espera o serviço ficar pronto
         wait_for_service(url=f'{LOCAL_URL}/sd-models')
 
-        # Inicia o handler do RunPod
         print("Iniciando o handler do RunPod...")
         runpod.serverless.start({"handler": handler})
 
     except Exception as e:
         print(f"Um erro fatal ocorreu: {e}")
     finally:
-        # Garante que o processo A1111 seja encerrado mesmo se houver um erro na inicialização.
         if a1111_process:
             print("Limpando o processo A1111 na saída...")
             os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
