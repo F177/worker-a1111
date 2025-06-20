@@ -1,44 +1,50 @@
-# Stage 1: Começamos de uma imagem base do RunPod que já contém CUDA e PyTorch
-# Isso elimina os downloads gigantes e os problemas de tamanho de camada.
-FROM runpod/pytorch:2.2.0-py3.10-cuda12.1.1-devel AS build_final_image
+# ---------------------------------------------------------------------------- #
+#                         Stage 1: Download the models                         #
+# ---------------------------------------------------------------------------- #
+FROM alpine/git:2.43.0 as download
 
-# Definimos os argumentos e variáveis de ambiente
+# NOTE: CivitAI usually requires an API token, so you need to add it in the header
+#       of the wget command if you're using a model from CivitAI.
+RUN apk add --no-cache wget && \
+    wget -q -O /model.safetensors https://huggingface.co/XpucT/Deliberate/resolve/main/Deliberate_v6.safetensors
+
+# ---------------------------------------------------------------------------- #
+#                        Stage 2: Build the final image                        #
+# ---------------------------------------------------------------------------- #
+FROM python:3.10.14-slim as build_final_image
+
 ARG A1111_RELEASE=v1.9.3
+
 ENV DEBIAN_FRONTEND=noninteractive \
-    ROOT=/stable-diffusion-webui
+    PIP_PREFER_BINARY=1 \
+    ROOT=/stable-diffusion-webui \
+    PYTHONUNBUFFERED=1
 
-# Instala apenas as dependências de sistema que faltam
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    git rsync wget libgoogle-perftools-dev && \
-    apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+    apt install -y \
+    fonts-dejavu-core rsync git jq moreutils aria2 wget libgoogle-perftools-dev libtcmalloc-minimal4 procps libgl1 libglib2.0-0 && \
+    apt-get autoremove -y && rm -rf /var/lib/apt/lists/* && apt-get clean -y
 
-# Define o diretório de trabalho
-WORKDIR ${ROOT}
-
-# Clona o A1111 e remove o .git para economizar espaço
-RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git . && \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git && \
+    cd stable-diffusion-webui && \
     git reset --hard ${A1111_RELEASE} && \
-    rm -rf .git
+    pip install xformers && \
+    pip install -r requirements_versions.txt && \
+    python -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
 
-# Instala o xformers e os requisitos do A1111.
-# Isso será muito mais rápido pois o torch já está instalado.
-RUN pip install xformers==0.0.22.post7 && \
-    pip install -r requirements_versions.txt
+COPY --from=download /model.safetensors /model.safetensors
 
-# Baixa nosso modelo de exemplo
-RUN wget -q -O ${ROOT}/models/Stable-diffusion/model.safetensors https://huggingface.co/XpucT/Deliberate/resolve/main/Deliberate_v6.safetensors
-
-# Voltamos para a raiz para copiar os arquivos do worker
-WORKDIR /
-
-# Copia os arquivos de dependência e da aplicação
+# install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
 
-COPY src/handler.py .
-COPY src/start.sh .
+COPY test_input.json .
+
+ADD src .
+
 RUN chmod +x /start.sh
-
-# Define o comando de inicialização
-CMD ["/start.sh"]
+CMD /start.sh
