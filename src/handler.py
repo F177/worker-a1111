@@ -5,6 +5,7 @@ import subprocess
 import os
 import signal
 import sys
+import threading
 from requests.adapters import HTTPAdapter, Retry
 
 # --- CONFIGURAÇÃO ---
@@ -16,6 +17,7 @@ A1111_COMMAND = [
     "--ckpt", "/model.safetensors"
 ]
 a1111_process = None
+shutdown_flag = threading.Event() # Usaremos um "evento" para sinalizar o desligamento
 
 # --- FUNÇÕES DE REDE ---
 automatic_session = requests.Session()
@@ -34,7 +36,6 @@ def wait_for_service(url):
 
 def run_inference(inference_request):
     """Roda a inferência com timeout aumentado."""
-    # Aumentado para 900s (15 minutos) para dar tempo de carregar o modelo na primeira vez.
     response = automatic_session.post(f'{LOCAL_URL}/txt2img', json=inference_request, timeout=900)
     response.raise_for_status()
     return response.json()
@@ -42,19 +43,17 @@ def run_inference(inference_request):
 # --- FUNÇÃO PRINCIPAL DO HANDLER ---
 def handler(event):
     """
-    Processa o job, retorna o resultado e, em seguida, inicia o processo de autodestruição.
+    Processa o job, retorna o resultado e sinaliza para o desligamento.
     """
-    global a1111_process
     try:
         print("Job recebido. Iniciando a geração...")
         json_output = run_inference(event["input"])
         print("Geração finalizada. Retornando o resultado para a plataforma.")
         return json_output
     finally:
-        print("Iniciando autodestruição do worker...")
-        if a1111_process:
-            os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
-        sys.exit(0)
+        # Em vez de sys.exit(), nós apenas ativamos a flag.
+        print("Sinalizando para o desligamento do worker...")
+        shutdown_flag.set()
 
 # --- PONTO DE ENTRADA PRINCIPAL ---
 if __name__ == "__main__":
@@ -65,11 +64,21 @@ if __name__ == "__main__":
         wait_for_service(url=f'{LOCAL_URL}/sd-models')
 
         print("Iniciando o handler do RunPod...")
+        # A chamada para o start agora é o nosso ponto de bloqueio principal.
         runpod.serverless.start({"handler": handler})
+
+        # O código abaixo só será executado DEPOIS que runpod.serverless.start() terminar.
+        # Ele só termina quando o worker é sinalizado para desligar. A biblioteca do runpod
+        # não tem um mecanismo de parada limpo, então vamos esperar a flag ser ativada.
+        print("Loop do RunPod terminado. Aguardando a flag de desligamento...")
+        shutdown_flag.wait() # Espera até que o handler ative a flag
 
     except Exception as e:
         print(f"Um erro fatal ocorreu: {e}")
     finally:
+        # Garante que o processo A1111 seja encerrado na saída.
         if a1111_process:
-            print("Limpando o processo A1111 na saída...")
+            print("Limpando o processo A1111 na saída final...")
             os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
+        
+        print("Worker encerrado.")
