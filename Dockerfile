@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------- #
 #                           Stage 1: Download the models                       #
 # ---------------------------------------------------------------------------- #
-FROM alpine/git:2.43.0 as download
+FROM alpine/git:2.43.0 AS download
 
 RUN apk add --no-cache wget && \
     wget -q -O /model.safetensors https://huggingface.co/XpucT/Deliberate/resolve/main/Deliberate_v6.safetensors
@@ -9,7 +9,7 @@ RUN apk add --no-cache wget && \
 # ---------------------------------------------------------------------------- #
 #                          Stage 2: Build the final image                      #
 # ---------------------------------------------------------------------------- #
-FROM python:3.10.14-slim as build_final_image
+FROM python:3.10.14-slim AS build_final_image
 
 ARG A1111_RELEASE=v1.9.3
 
@@ -35,15 +35,19 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY --from=download /model.safetensors /model.safetensors
 
-# Instala as dependências do worker
+# Copia os arquivos de dependência
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements.txt
 
-# Copia os arquivos da aplicação de forma explícita
-COPY handler.py .
-COPY start.sh .
-COPY test_input.json . # Se você tiver este arquivo
+# --- MUDANÇA CRÍTICA AQUI ---
+# Copia os arquivos de dentro da pasta 'src' para a raiz do container
+COPY src/handler.py .
+COPY src/start.sh .
+
+# Copia o arquivo de teste (se existir)
+COPY test_input.json .
+
 RUN chmod +x /start.sh
 
 CMD ["/start.sh"]
