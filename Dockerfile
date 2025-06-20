@@ -35,19 +35,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY --from=download /model.safetensors /model.safetensors
 
-# Copia os arquivos de dependência
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements.txt
 
-# --- MUDANÇA CRÍTICA AQUI ---
-# Copia os arquivos de dentro da pasta 'src' para a raiz do container
-COPY src/handler.py .
-COPY src/start.sh .
-
-# Copia o arquivo de teste (se existir)
-COPY test_input.json .
-
+# Copia os scripts da aplicação que vamos criar abaixo
+COPY handler.py .
+COPY start.sh .
 RUN chmod +x /start.sh
 
 CMD ["/start.sh"]
