@@ -25,6 +25,15 @@ A1111_COMMAND = [
 a1111_process = None
 shutdown_flag = threading.Event() # Usaremos um "evento" para sinalizar o desligamento
 
+# --- DEFINIÇÃO MANUAL DAS VARIÁVEIS DE AMBIENTE S3 NO CÓDIGO (NÃO RECOMENDADO) ---
+# --- SUBSTITUA OS VALORES ABAIXO PELOS SEUS VALORES REAIS DO BUCKET S3 ---
+os.environ["BUCKET_ENDPOINT_URL"] = "https://realismo-runpod-images.s3.us-east-2.amazonaws.com"
+os.environ["BUCKET_NAME"] = "realismo-runpod-images"
+os.environ["BUCKET_ACCESS_KEY_ID"] = "SUA_CHAVE_DE_ACESSO_AWS" # <-- SUBSTITUA PELA SUA CHAVE REAL
+os.environ["BUCKET_SECRET_ACCESS_KEY"] = "SUA_CHAVE_SECRETA_AWS" # <-- SUBSTITUA PELA SUA CHAVE REAL
+# --- FIM DA DEFINIÇÃO MANUAL ---
+
+
 # --- FUNÇÕES DE REDE ---
 automatic_session = requests.Session()
 retries = Retry(total=10, backoff_factor=0.2, status_forcelist=[502, 503, 504])
@@ -77,6 +86,8 @@ def handler(job):
                     image_bytes = base64.b64decode(base64_data)
                     filename = f"image_{job_id}_{i}.png" # Nome único para o arquivo
 
+                    # A verificação os.environ.get("BUCKET_ENDPOINT_URL") ainda é válida,
+                    # mas agora esperamos que a variável esteja sempre definida aqui.
                     if os.environ.get("BUCKET_ENDPOINT_URL"):
                         try:
                             with tempfile.NamedTemporaryFile(
@@ -115,7 +126,7 @@ def handler(job):
                                         f"worker-a1111 - Error removing temp file {temp_file_path}: {rm_err}"
                                     )
                     else:
-                        # Se não há BUCKET_ENDPOINT_URL, retorna como base64
+                        # Se por algum motivo BUCKET_ENDPOINT_URL não estiver definido, retorna como base64
                         output_data.append(
                             {
                                 "filename": filename,
