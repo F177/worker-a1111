@@ -153,6 +153,20 @@ def handler(event):
     """
     This is the handler function that will be called by the serverless.
     """
+    # --- INÍCIO DO CÓDIGO DE DEBUG ---
+    print("--- DEBUG: Verificando Variáveis de Ambiente ---")
+    bucket_endpoint = os.environ.get("BUCKET_ENDPOINT_URL")
+    bucket_name = os.environ.get("BUCKET_NAME")
+    access_key = os.environ.get("BUCKET_ACCESS_KEY_ID")
+    secret_key_present = "Sim" if os.environ.get("BUCKET_SECRET_ACCESS_KEY") else "Não"
+
+    print(f"DEBUG | BUCKET_ENDPOINT_URL: {bucket_endpoint}")
+    print(f"DEBUG | BUCKET_NAME: {bucket_name}")
+    print(f"DEBUG | BUCKET_ACCESS_KEY_ID: {access_key}")
+    print(f"DEBUG | BUCKET_SECRET_ACCESS_KEY está presente?: {secret_key_present}")
+    print("--- FIM DO CÓDIGO DE DEBUG ---")
+    # --- FIM DO CÓDIGO DE DEBUG ---
+    
     job_id = event.get("id", "unknown_job")
 
     try:
