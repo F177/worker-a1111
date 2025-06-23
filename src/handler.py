@@ -52,10 +52,6 @@ def run_inference(inference_request):
 
 # --- FUNÇÃO PRINCIPAL DO HANDLER ---
 def handler(job):
-    """
-    Processa o job, retorna o resultado e sinaliza para o desligamento.
-    Adiciona a funcionalidade de upload para S3.
-    """
     job_input = job["input"]
     job_id = job["id"] # Obter job_id do objeto job
 
@@ -81,8 +77,7 @@ def handler(job):
                     image_bytes = base64.b64decode(base64_data)
                     filename = f"image_{job_id}_{i}.png" # Nome único para o arquivo
 
-                    # A verificação os.environ.get("BUCKET_ENDPOINT_URL") ainda é válida,
-                    # mas agora esperamos que a variável esteja sempre definida aqui.
+                    # Este bloco depende das variáveis de ambiente serem definidas no RunPod
                     if os.environ.get("BUCKET_ENDPOINT_URL"):
                         try:
                             with tempfile.NamedTemporaryFile(
@@ -121,7 +116,7 @@ def handler(job):
                                         f"worker-a1111 - Error removing temp file {temp_file_path}: {rm_err}"
                                     )
                     else:
-                        # Se por algum motivo BUCKET_ENDPOINT_URL não estiver definido, retorna como base64
+                        # Se BUCKET_ENDPOINT_URL não estiver definido, retorna como base64
                         output_data.append(
                             {
                                 "filename": filename,
