@@ -220,7 +220,7 @@ if __name__ == "__main__":
         print("worker-a1111 - WebUI API Service is ready. Starting RunPod Serverless...")
         runpod.serverless.start({"handler": handler})
 
-        print("worker-a1111 - RunPod handler loop finished. Waiting for shutdown flag...")
+        print("worker-a1111 - RunPod handler loop finished. Waiting for shutdown flag....")
         shutdown_flag.wait() # Wait until the handler sets the shutdown_flag
 
     except Exception as e:
