@@ -17,7 +17,7 @@ A1111_COMMAND = [
     "--ckpt", "/model.safetensors"
 ]
 a1111_process = None
-shutdown_flag = threading.Event() # Usaremos um "evento" para sinalizar o desligamento
+shutdown_flag = threading.Event() # Usaremos um "eventjjjo" para sinalizar o desligamento
 
 # --- FUNÇÕES DE REDE ---
 automatic_session = requests.Session()
