@@ -26,11 +26,6 @@ a1111_process = None
 shutdown_flag = threading.Event() # Usaremos um "evento" para sinalizar o desligamento
 
 # --- DEFINIÇÃO MANUAL DAS VARIÁVEIS DE AMBIENTE S3 NO CÓDIGO (NÃO RECOMENDADO) ---
-# --- SUBSTITUA OS VALORES ABAIXO PELOS SEUS VALORES REAIS DO BUCKET S3 ---
-os.environ["BUCKET_ENDPOINT_URL"] = "https://realismo-runpod-images.s3.us-east-2.amazonaws.com"
-os.environ["BUCKET_NAME"] = "realismo-runpod-images"
-os.environ["BUCKET_ACCESS_KEY_ID"] = "SUA_CHAVE_DE_ACESSO_AWS" # <-- SUBSTITUA PELA SUA CHAVE REAL
-os.environ["BUCKET_SECRET_ACCESS_KEY"] = "SUA_CHAVE_SECRETA_AWS" # <-- SUBSTITUA PELA SUA CHAVE REAL
 # --- FIM DA DEFINIÇÃO MANUAL ---
 
 
