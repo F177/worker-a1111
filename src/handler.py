@@ -245,4 +245,7 @@ if __name__ == "__main__":
             print("worker-a1111 - Cleaning up A1111 process on final exit...")
             os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
 
+        print("worker-a1111 - Forcing immediate exit to bypass network cleanup delay.")
+        os._exit(0)  # <-- ADICIONE ESTA LINHA
+
         print("worker-a1111 - Worker shutdown complete.")
