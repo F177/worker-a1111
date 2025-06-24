@@ -10,6 +10,8 @@ from requests.adapters import HTTPAdapter, Retry
 
 # --- CONFIGURAÇÃO ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
+# handler.py
+
 A1111_COMMAND = [
     "python", "/stable-diffusion-webui/launch.py",
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",

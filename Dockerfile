@@ -35,7 +35,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements_versions.txt && \
     python -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
 
-COPY --from=download /model.safetensors /model.safetensors
+# Copy the model to the standard A1111 directory for Stable Diffusion models
+COPY --from=download /model.safetensors /stable-diffusion-webui/models/Stable-diffusion/epicrealismXL_vxviLastfameRealism.safetensors
 
 # install dependencies
 COPY requirements.txt .
