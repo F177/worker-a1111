@@ -1,7 +1,5 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
 
-echo "--- EXECUTING MINIMAL TEST START SCRIPT ---"
-
-# Executa o handler de teste usando o caminho absoluto
-python -u /handler.py
+# O único trabalho deste script é executar o handler do Python.
+# 'exec' garante que o Python se torne o processo principal do container.
+exec python /handler.py
