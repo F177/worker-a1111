@@ -11,7 +11,6 @@ from requests.adapters import HTTPAdapter, Retry
 # --- CONFIGURAÇÃO ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
 
-# <<< CHANGE 1: REMOVED the incompatible "--ckpt" argument
 A1111_COMMAND = [
     "python", "/stable-diffusion-webui/launch.py",
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
@@ -31,15 +30,13 @@ def wait_for_service(url):
     while True:
         try:
             print(f"Verificando se o serviço está pronto: {url}")
-            # Use the session for the health check as well
             r = automatic_session.get(url, timeout=30)
-            # A1111 might return 405 Method Not Allowed if you GET a POST-only endpoint, which is fine.
             if r.status_code in [200, 405]:
                 print("A1111 está pronto.")
                 return
         except requests.exceptions.RequestException:
             print("Serviço A1111 ainda não está pronto, aguardando...")
-        time.sleep(2)
+            time.sleep(2)
 
 # --- FAZ A INFERÊNCIA ---
 def run_inference(inference_request):
@@ -75,13 +72,15 @@ def handler(event):
         shutdown_flag.set()
 
 # --- INICIALIZAÇÃO ---
-# <<< CHANGE 2: CORRECTED the typo from "_main_" to "__main__"
 if __name__ == "__main__":
     try:
         print("Iniciando o servidor A1111 em segundo plano...")
+        # Alteração para redirecionar a saída do A1111 para o log principal
         a1111_process = subprocess.Popen(
             A1111_COMMAND,
-            preexec_fn=os.setsid
+            preexec_fn=os.setsid,
+            stdout=sys.stdout,
+            stderr=sys.stderr
         )
 
         # Check a reliable endpoint to confirm the API is running
