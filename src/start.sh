@@ -1,8 +1,7 @@
 #!/bin/bash
-# Lembre-se de salvar este arquivo com formato de linha LF (Linux)
+set -e
 
-echo "--- INICIANDO SCRIPT DE TESTE start.sh ---"
-echo "Data e hora atual: $(date)"
-echo "Listando arquivos na raiz:"
-ls -la /
-echo "--- TESTE CONCLUÍDO. O WORKER DEVE SER ENCERRADO. ---"
+echo "--- EXECUTING MINIMAL TEST START SCRIPT ---"
+
+# Executa o handler de teste usando o caminho absoluto
+python -u /test_handler.py
