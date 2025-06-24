@@ -1,104 +1,64 @@
 import time
 import runpod
 import requests
-import subprocess
-import os
-import signal
-import sys
-import threading
 from requests.adapters import HTTPAdapter, Retry
 
-# --- CONFIGURAÇÃO ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
 
-A1111_COMMAND = [
-    "python", "/stable-diffusion-webui/webui.py",
-    "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
-    "--skip-version-check", "--disable-safe-unpickle"
-]
-
-a1111_process = None
-shutdown_flag = threading.Event()
-
-# --- SESSÃO COM REQUISIÇÕES ROBUSTAS ---
 automatic_session = requests.Session()
-retries = Retry(total=10, backoff_factor=0.2, status_forcelist=[502, 503, 504])
+retries = Retry(total=10, backoff_factor=0.1, status_forcelist=[502, 503, 504])
 automatic_session.mount('http://', HTTPAdapter(max_retries=retries))
 
-# --- AGUARDA O A1111 FICAR PRONTO ---
+
+# ---------------------------------------------------------------------------- #
+#                              Automatic Functions                             #
+# ---------------------------------------------------------------------------- #
 def wait_for_service(url):
+    """
+    Check if the service is ready to receive requests.
+    """
+    retries = 0
+
     while True:
         try:
-            print(f"Verificando se o serviço está pronto: {url}")
-            r = automatic_session.get(url, timeout=30)
-            if r.status_code in [200, 405]:
-                print("A1111 está pronto.")
-                return
+            requests.get(url, timeout=120)
+            return
         except requests.exceptions.RequestException:
-            print("Serviço A1111 ainda não está pronto, aguardando...")
-            time.sleep(2)
+            retries += 1
 
-# --- FAZ A INFERÊNCIA ---
+            # Only log every 15 retries so the logs don't get spammed
+            if retries % 15 == 0:
+                print("Service not ready yet. Retrying...")
+        except Exception as err:
+            print("Error: ", err)
+
+        time.sleep(0.2)
+
+
 def run_inference(inference_request):
-    try:
-        print("Enviando requisição para A1111...")
-        response = automatic_session.post(
-            f'{LOCAL_URL}/txt2img',
-            json=inference_request,
-            timeout=900
-        )
-        response.raise_for_status()
-        print("Resposta recebida com sucesso.")
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"Erro durante a inferência: {e}")
-        return {
-            "error": "Falha na geração de imagem",
-            "details": str(e)
-        }
+    """
+    Run inference on a request.
+    """
+    response = automatic_session.post(url=f'{LOCAL_URL}/txt2img',
+                                      json=inference_request, timeout=600)
+    return response.json()
 
-# --- HANDLER PRINCIPAL ---
+
+# ---------------------------------------------------------------------------- #
+#                                RunPod Handler                                #
+# ---------------------------------------------------------------------------- #
 def handler(event):
-    try:
-        print("Job recebido.")
-        if "input" not in event:
-            return {
-                "error": "Formato inválido. Esperado: { 'input': { ... } }"
-            }
-        json_output = run_inference(event["input"])
-        return json_output
-    finally:
-        print("Sinalizando desligamento do worker após job.")
-        shutdown_flag.set()
+    """
+    This is the handler function that will be called by the serverless.
+    """
 
-# --- INICIALIZAÇÃO ---
+    json = run_inference(event["input"])
+
+    # return the output that you want to be returned like pre-signed URLs to output artifacts
+    return json
+
+
 if __name__ == "__main__":
-    try:
-        print("Iniciando o servidor A1111 em segundo plano...")
-        a1111_process = subprocess.Popen(
-            A1111_COMMAND,
-            preexec_fn=os.setsid,
-            stdout=sys.stdout,
-            stderr=sys.stderr
-        )
-
-        wait_for_service(f"{LOCAL_URL}/progress")
-
-        # <<< MUDANÇA FINAL: Adicionar um atraso para o carregamento do modelo >>>
-        print("Servidor web está no ar. Aguardando 20 segundos para o modelo carregar na GPU...")
-        time.sleep(20)
-
-        print("A1111 pronto. Iniciando o handler do RunPod...")
-        runpod.serverless.start({"handler": handler})
-
-        print("RunPod finalizado. Aguardando shutdown_flag...")
-        shutdown_flag.wait()
-
-    except Exception as e:
-        print(f"Erro fatal no worker: {e}", file=sys.stderr)
-
-    finally:
-        if a1111_process:
-            print("Encerrando processo A1111...")
-            os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
-        print("Worker finalizado com sucesso.")
+    wait_for_service(url=f'{LOCAL_URL}/sd-models')
+    print("WebUI API Service is ready. Starting RunPod Serverless...")
+    runpod.serverless.start({"handler": handler})
