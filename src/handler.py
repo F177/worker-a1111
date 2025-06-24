@@ -76,7 +76,7 @@ def handler(event):
         shutdown_flag.set()
 
 # --- INICIALIZAÇÃO ---
-if _name_ == "_main_":
+if __name__ == "_main_":
     try:
         print("Iniciando o servidor A1111 em segundo plano...")
 
