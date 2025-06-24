@@ -11,10 +11,11 @@ from requests.adapters import HTTPAdapter, Retry
 # --- CONFIGURAÇÃO ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
 
+# <<< MUDANÇA PRINCIPAL: Usando webui.py diretamente >>>
 A1111_COMMAND = [
-    "python", "/stable-diffusion-webui/launch.py",
+    "python", "/stable-diffusion-webui/webui.py",  # Alterado de launch.py para webui.py
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
-    "--skip-install", "--skip-version-check", "--disable-safe-unpickle"
+    "--skip-version-check", "--disable-safe-unpickle"
 ]
 
 a1111_process = None
@@ -75,7 +76,6 @@ def handler(event):
 if __name__ == "__main__":
     try:
         print("Iniciando o servidor A1111 em segundo plano...")
-        # Alteração para redirecionar a saída do A1111 para o log principal
         a1111_process = subprocess.Popen(
             A1111_COMMAND,
             preexec_fn=os.setsid,
@@ -83,7 +83,6 @@ if __name__ == "__main__":
             stderr=sys.stderr
         )
 
-        # Check a reliable endpoint to confirm the API is running
         wait_for_service(f"{LOCAL_URL}/progress")
 
         print("A1111 pronto. Iniciando o handler do RunPod...")
@@ -98,6 +97,5 @@ if __name__ == "__main__":
     finally:
         if a1111_process:
             print("Encerrando processo A1111...")
-            # Use killpg to terminate the entire process group
             os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
         print("Worker finalizado com sucesso.")
