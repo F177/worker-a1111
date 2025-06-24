@@ -11,9 +11,8 @@ from requests.adapters import HTTPAdapter, Retry
 # --- CONFIGURAÇÃO ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
 
-# <<< MUDANÇA PRINCIPAL: Usando webui.py diretamente >>>
 A1111_COMMAND = [
-    "python", "/stable-diffusion-webui/webui.py",  # Alterado de launch.py para webui.py
+    "python", "/stable-diffusion-webui/webui.py",
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
     "--skip-version-check", "--disable-safe-unpickle"
 ]
@@ -84,6 +83,10 @@ if __name__ == "__main__":
         )
 
         wait_for_service(f"{LOCAL_URL}/progress")
+
+        # <<< MUDANÇA FINAL: Adicionar um atraso para o carregamento do modelo >>>
+        print("Servidor web está no ar. Aguardando 20 segundos para o modelo carregar na GPU...")
+        time.sleep(20)
 
         print("A1111 pronto. Iniciando o handler do RunPod...")
         runpod.serverless.start({"handler": handler})
