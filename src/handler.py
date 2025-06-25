@@ -39,6 +39,18 @@ def run_inference(inference_request):
     """
     Run inference on a request.
     """
+    # Get the lora_level from the input, with a default of 1.0 if not provided
+    lora_level = inference_request.get("lora_level", 1.0)
+
+    # Construct the LoRA prompt with the desired level
+    lora_prompt = f"<lora:epicrealness:{lora_level}>"
+
+    # Append the LoRA to the main prompt
+    if "prompt" in inference_request:
+        inference_request["prompt"] = f"{inference_request['prompt']}, {lora_prompt}"
+    else:
+        inference_request["prompt"] = lora_prompt
+
     response = automatic_session.post(url=f'{LOCAL_URL}/txt2img',
                                       json=inference_request, timeout=600)
     return response.json()
