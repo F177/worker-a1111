@@ -1,15 +1,14 @@
 # ---------------------------------------------------------------------------- #
-#                         Stage 1: Download the models                         #
+#                          Stage 1: Download the models                          #
 # ---------------------------------------------------------------------------- #
 FROM alpine/git:2.43.0 as download
 
-# NOTE: CivitAI usually requires an API token, so you need to add it in the header
-#       of the wget command if you're using a model from CivitAI.
+# This model is a Stable Diffusion 1.5 model
 RUN apk add --no-cache wget && \
-    wget -q -O /model.safetensors https://huggingface.co/XpucT/Deliberate/resolve/main/Deliberate_v6.safetensors
+    wget -q -O /Deliberate_v6.safetensors https://huggingface.co/XpucT/Deliberate/resolve/main/Deliberate_v6.safetensors
 
 # ---------------------------------------------------------------------------- #
-#                        Stage 2: Build the final image                        #
+#                         Stage 2: Build the final image                         #
 # ---------------------------------------------------------------------------- #
 FROM python:3.10.14-slim as build_final_image
 
@@ -35,16 +34,17 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements_versions.txt && \
     python -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
 
-COPY --from=download /model.safetensors /model.safetensors
+# Copy the model to the standard A1111 directory
+COPY --from=download /Deliberate_v6.safetensors /stable-diffusion-webui/models/Stable-diffusion/Deliberate_v6.safetensors
 
-# install dependencies
+# install dependencies from your requirements.txt
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements.txt
 
-COPY test_input.json .
-
+# Add the handler and startup script from your src folder
 ADD src .
 
+# Make the start script executable and set it as the command
 RUN chmod +x /start.sh
-CMD /start.sh
+CMD ["/start.sh"]
