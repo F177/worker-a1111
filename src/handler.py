@@ -1,5 +1,3 @@
-# handler.py
-
 import time
 import runpod
 import requests
@@ -46,23 +44,14 @@ def run_inference(inference_request):
         inference_request["prompt"] = lora_prompt
         
     # --- Negative Prompt Modifications ---
+    # Define the trigger words for the negative embeddings
     negative_embeddings = "veryBadImageNegative_v1.3, FastNegativeV2"
+
+    # Get the user's negative prompt, or an empty string if not provided
     user_negative_prompt = inference_request.get("negative_prompt", "")
+    
+    # Combine the user's negative prompt with the embeddings
     inference_request["negative_prompt"] = f"{user_negative_prompt}, {negative_embeddings}"
-
-    # --- Lógica do Clip Skip dinâmico ---
-    # Pega o valor de "clip_skip" do input. Se não for fornecido, o padrão é 1.
-    clip_skip_value = inference_request.get("clip_skip", 1)
-    
-    override_settings = {
-        "CLIP_stop_at_last_layers": clip_skip_value
-    }
-
-    # Adiciona as configurações ao payload da requisição
-    if "override_settings" not in inference_request:
-        inference_request["override_settings"] = {}
-    
-    inference_request["override_settings"].update(override_settings)
 
     response = automatic_session.post(url=f'{LOCAL_URL}/txt2img',
                                       json=inference_request, timeout=600)
