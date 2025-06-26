@@ -4,13 +4,18 @@
 FROM alpine/git:2.43.0 as download
 
 RUN apk add --no-cache wget && \
+    # Main Model
     wget -q -O /model.safetensors https://huggingface.co/Fabricioi/modelorealista/resolve/main/epicrealismXL_vxviLastfameRealism.safetensors && \
-    wget -q -O /epicrealness.safetensors "https://civitai.com/api/download/models/1648538"
+    # LoRA Model
+    wget -q -O /epicrealness.safetensors "https://civitai.com/api/download/models/1648538" && \
+    # Negative Embeddings
+    wget -q -O /veryBadImageNegative_v1.3.pt "https://civitai.com/api/download/models/25820" && \
+    wget -q -O /FastNegativeV2.pt "https://civitai.com/api/download/models/94057"
+
 
 FROM python:3.10.14-slim as build_final_image
 
 ARG CACHE_BUSTER=1
-
 ARG A1111_RELEASE=v1.9.3
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -34,10 +39,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements_versions.txt && \
     python -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
 
-# Copy the model to the standard A1111 directory for Stable Diffusion models
+# Copy the main model
 COPY --from=download /model.safetensors /stable-diffusion-webui/models/Stable-diffusion/epicrealismXL_vxviLastfameRealism.safetensors
-# Copy the LoRA model to the standard A1111 directory for LoRAs
+# Copy the LoRA model
 COPY --from=download /epicrealness.safetensors /stable-diffusion-webui/models/Lora/epicrealness.safetensors
+# Copy the embeddings
+COPY --from=download /veryBadImageNegative_v1.3.pt /stable-diffusion-webui/embeddings/veryBadImageNegative_v1.3.pt
+COPY --from=download /FastNegativeV2.pt /stable-diffusion-webui/embeddings/FastNegativeV2.pt
+
 
 # install dependencies
 COPY requirements.txt .
@@ -46,8 +55,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY test_input.json .
 
-# This command is correct based on your file structure.
-# It copies handler.py and start.sh into the root of the image.
 ADD src .
 
 RUN chmod +x /start.sh

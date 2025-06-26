@@ -18,20 +18,16 @@ def wait_for_service(url):
     Check if the service is ready to receive requests.
     """
     retries = 0
-
     while True:
         try:
             requests.get(url, timeout=120)
             return
         except requests.exceptions.RequestException:
             retries += 1
-
-            # Only log every 15 retries so the logs don't get spammed
             if retries % 15 == 0:
                 print("Service not ready yet. Retrying...")
         except Exception as err:
             print("Error: ", err)
-
         time.sleep(0.2)
 
 
@@ -39,17 +35,23 @@ def run_inference(inference_request):
     """
     Run inference on a request.
     """
-    # Get the lora_level from the input, with a default of 1.0 if not provided
+    # --- Positive Prompt Modifications ---
     lora_level = inference_request.get("lora_level", 1.0)
-
-    # Construct the LoRA prompt with the desired level
     lora_prompt = f"<lora:epicrealness:{lora_level}>"
-
-    # Append the LoRA to the main prompt
     if "prompt" in inference_request:
         inference_request["prompt"] = f"{inference_request['prompt']}, {lora_prompt}"
     else:
         inference_request["prompt"] = lora_prompt
+        
+    # --- Negative Prompt Modifications ---
+    # Define the trigger words for the negative embeddings
+    negative_embeddings = "veryBadImageNegative_v1.3, FastNegativeV2"
+
+    # Get the user's negative prompt, or an empty string if not provided
+    user_negative_prompt = inference_request.get("negative_prompt", "")
+    
+    # Combine the user's negative prompt with the embeddings
+    inference_request["negative_prompt"] = f"{user_negative_prompt}, {negative_embeddings}"
 
     response = automatic_session.post(url=f'{LOCAL_URL}/txt2img',
                                       json=inference_request, timeout=600)
@@ -63,10 +65,7 @@ def handler(event):
     """
     This is the handler function that will be called by the serverless.
     """
-
     json = run_inference(event["input"])
-
-    # return the output that you want to be returned like pre-signed URLs to output artifacts
     return json
 
 
