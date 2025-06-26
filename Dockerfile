@@ -7,10 +7,10 @@ RUN apk add --no-cache wget && \
     # Main Model
     wget -q -O /model.safetensors https://huggingface.co/Fabricioi/modelorealista/resolve/main/epicrealismXL_vxviLastfameRealism.safetensors && \
     # LoRA Model
-    wget -q -O /epicrealness.safetensors "https://civitai.com/api/download/models/1648538" && \
+    wget -q -O /epicrealness.safetensors "https://huggingface.co/Fabricioi/modelorealista/resolve/main/epiCRealnessRC1.safetensors" && \
     # Negative Embeddings
-    wget -q -O /veryBadImageNegative_v1.3.pt "https://civitai.com/api/download/models/25820" && \
-    wget -q -O /FastNegativeV2.pt "https://civitai.com/api/download/models/94057"
+    wget -q -O /veryBadImageNegative_v1.3.pt "https://huggingface.co/Fabricioi/modelorealista/resolve/main/verybadimagenegative_v1.3.pt" && \
+    wget -q -O /FastNegativeV2.pt "https://huggingface.co/Fabricioi/modelorealista/resolve/main/FastNegativeV2.pt"
 
 
 FROM python:3.10.14-slim as build_final_image
