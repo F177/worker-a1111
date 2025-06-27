@@ -5,7 +5,7 @@ FROM alpine/git:2.43.0 as download
 
 RUN apk add --no-cache wget && \
     # Main Model
-    wget -q -O /model.safetensors "https://huggingface.co/Fabricioi/modelorealista/resolve/main/epicrealismXL_vxviiCrystalclear.safetensors" && \
+    wget -q -O /model.safetensors "https://huggingface.co/Fabricioi/modelorealista/resolve/main/ultimaterealismo.safetensors" && \
     # LoRA Model
     wget -q -O /epicrealness.safetensors "https://huggingface.co/Fabricioi/modelorealista/resolve/main/epiCRealnessRC1.safetensors" && \
     # Negative Embeddings
