@@ -10,9 +10,6 @@ from requests.adapters import HTTPAdapter, Retry
 
 # --- CONFIGURATION ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
-
-# Command to start A1111. Note we do NOT specify a --ckpt file here.
-# The model will be loaded dynamically via the API.
 A1111_COMMAND = [
     "python", "/stable-diffusion-webui/webui.py",
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
@@ -43,12 +40,9 @@ def wait_for_service(url):
     return False
 
 def run_inference(inference_request):
-    """Runs inference with the provided payload."""
-    # --- IMPORTANT: This section now builds the final payload ---
-
+    """Runs inference with the provided payload, adding refiner logic."""
     # 1. Apply LoRA to the positive prompt
-    lora_level = inference_request.get("lora_level", 0.6) # Default LoRA level
-    # <<< CHANGE: Corrected the LoRA name >>>
+    lora_level = inference_request.get("lora_level", 0.6)
     lora_prompt = f"<lora:epiCRealnessRC1:{lora_level}>"
     inference_request["prompt"] = f"{inference_request.get('prompt', '')}, {lora_prompt}"
     
@@ -57,17 +51,22 @@ def run_inference(inference_request):
     inference_request["negative_prompt"] = f"{inference_request.get('negative_prompt', '')}, {negative_embeddings}"
 
     # 3. CRITICAL: Tell A1111 which base model to use
-    # This ensures the LoRA is applied to the correct model.
     override_settings = {
         "sd_model_checkpoint": "ultimaterealismo.safetensors",
-        "CLIP_stop_at_last_layers": inference_request.get("clip_skip", 2) # Default clip_skip
+        "CLIP_stop_at_last_layers": inference_request.get("clip_skip", 2)
     }
     
+    # Add SDXL Refiner Logic if requested
+    if inference_request.get("use_refiner", False):
+        print("Refiner enabled for this request.")
+        inference_request["refiner_checkpoint"] = "sd_xl_refiner_1.0.safetensors"
+        inference_request["refiner_switch_at"] = inference_request.get("refiner_switch_at", 0.8)
+
     if "override_settings" not in inference_request:
         inference_request["override_settings"] = {}
     inference_request["override_settings"].update(override_settings)
 
-    # 4. Send the request to the A1111 API
+    # 4. Send the request
     response = automatic_session.post(url=f'{LOCAL_URL}/txt2img', json=inference_request, timeout=600)
     return response.json()
 
@@ -80,7 +79,6 @@ def handler(event):
         print("Inference complete.")
         return json_output
     finally:
-        # This optimization ensures the worker shuts down immediately after a job.
         print("Job finished. Signaling for worker shutdown.")
         shutdown_flag.set()
 
@@ -90,19 +88,16 @@ if __name__ == "__main__":
         print("Starting A1111 server in the background...")
         a1111_process = subprocess.Popen(A1111_COMMAND, preexec_fn=os.setsid)
 
-        # Wait for the service to be fully ready
         if wait_for_service(url=f'{LOCAL_URL}/progress'):
             print("Starting RunPod serverless handler...")
             runpod.serverless.start({"handler": handler})
 
-        # Wait for the shutdown signal to ensure a clean exit
         shutdown_flag.wait()
 
     except Exception as e:
         print(f"A fatal error occurred in the main process: {e}")
         shutdown_flag.set()
     finally:
-        # Cleanly terminate the A1111 process
         if a1111_process and a1111_process.poll() is None:
             print("Terminating A1111 process...")
             os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
