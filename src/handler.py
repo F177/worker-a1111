@@ -10,10 +10,14 @@ from requests.adapters import HTTPAdapter, Retry
 
 # --- CONFIGURATION ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
+
+# A1111 is now started here. Note the --opt-sdp-attention flag is added
+# and --ckpt is correctly removed for faster startup.
 A1111_COMMAND = [
     "python", "/stable-diffusion-webui/webui.py",
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
-    "--skip-version-check", "--disable-safe-unpickle", "--no-hashing"
+    "--skip-version-check", "--disable-safe-unpickle", "--no-hashing",
+    "--opt-sdp-attention", "--no-download-sd-model"
 ]
 
 a1111_process = None
@@ -79,6 +83,8 @@ def handler(event):
         print("Inference complete.")
         return json_output
     finally:
+        # This block is crucial for your optimization.
+        # It ensures that after the job is done, the shutdown is signaled.
         print("Job finished. Signaling for worker shutdown.")
         shutdown_flag.set()
 
@@ -86,18 +92,21 @@ def handler(event):
 if __name__ == "__main__":
     try:
         print("Starting A1111 server in the background...")
+        # This script now launches and manages the A1111 process
         a1111_process = subprocess.Popen(A1111_COMMAND, preexec_fn=os.setsid)
 
         if wait_for_service(url=f'{LOCAL_URL}/progress'):
             print("Starting RunPod serverless handler...")
             runpod.serverless.start({"handler": handler})
 
+        # The script will pause here until the handler sets the shutdown_flag
         shutdown_flag.wait()
 
     except Exception as e:
         print(f"A fatal error occurred in the main process: {e}")
         shutdown_flag.set()
     finally:
+        # This block ensures the A1111 server is terminated cleanly.
         if a1111_process and a1111_process.poll() is None:
             print("Terminating A1111 process...")
             os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
