@@ -54,10 +54,12 @@ def run_inference(inference_request):
     negative_embeddings = "veryBadImageNegative_v1.3, FastNegativeV2"
     inference_request["negative_prompt"] = f"{inference_request.get('negative_prompt', '')}, {negative_embeddings}"
 
-    # 3. CRITICAL: Tell A1111 which base model to use
+    # 3. CRITICAL: Tell A1111 which base model to use and set CLIP Skip
     override_settings = {
         "sd_model_checkpoint": "ultimaterealismo.safetensors",
-        "CLIP_stop_at_last_layers": inference_request.get("clip_skip", 2)
+        
+        # <<< --- FIX: Add this line to correctly handle clip_skip --- >>>
+        "CLIP_stop_at_last_layers": inference_request.get("clip_skip", 1)
     }
     
     # Add SDXL Refiner Logic if requested
@@ -71,6 +73,7 @@ def run_inference(inference_request):
     inference_request["override_settings"].update(override_settings)
 
     # 4. Send the request
+    # The top-level "clip_skip" will be ignored, but the one in override_settings will work
     response = automatic_session.post(url=f'{LOCAL_URL}/txt2img', json=inference_request, timeout=600)
     return response.json()
 
