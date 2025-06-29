@@ -39,6 +39,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     cd stable-diffusion-webui && \
     git reset --hard ${A1111_RELEASE} && \
     pip install xformers && \
+    pip install insightface && \
     pip install -r requirements_versions.txt && \
     python -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
 

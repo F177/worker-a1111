@@ -7,6 +7,12 @@ import signal
 import sys
 import threading
 from requests.adapters import HTTPAdapter, Retry
+import cv2
+import insightface
+import numpy as np
+import boto3
+import uuid
+import base64 
 
 # --- CONFIGURATION ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
@@ -19,6 +25,47 @@ A1111_COMMAND = [
     "--skip-version-check", "--disable-safe-unpickle", "--no-hashing",
     "--opt-sdp-attention", "--no-download-sd-model"
 ]
+
+# --- S3 Client (for saving cropped faces) ---
+s3_client = boto3.client('s3')
+S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
+
+# --- Face Analysis Setup ---
+face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
+
+
+def detect_and_save_faces(image_bytes):
+    """Detects faces in an image, crops them, and uploads them to S3."""
+    try:
+        img = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+        faces = face_analyzer.get(img)
+        if not faces:
+            return []
+
+        detected_faces = []
+        for i, face in enumerate(faces):
+            # Crop the face using the bounding box
+            bbox = face.bbox.astype(int)
+            cropped_img = img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+
+            # Convert cropped image back to bytes (PNG format)
+            _, buffer = cv2.imencode('.png', cropped_img)
+            face_bytes = buffer.tobytes()
+
+            # Generate a unique ID and S3 key
+            face_id = f"f-{uuid.uuid4()}"
+            s3_key = f"faces/{face_id}.png"
+
+            # Upload to S3
+            s3_client.put_object(Bucket=S3_BUCKET_NAME, Key=s3_key, Body=face_bytes, ContentType='image/png')
+
+            detected_faces.append({"face_id": face_id, "face_index": i})
+
+        return detected_faces
+    except Exception as e:
+        print(f"Error in face detection: {e}")
+        return []
 
 a1111_process = None
 shutdown_flag = threading.Event()
@@ -83,11 +130,15 @@ def handler(event):
     try:
         print("Job received. Starting inference...")
         json_output = run_inference(event["input"])
+        if "ip_adapter_image_b64" not in event["input"]:
+            print("Running face detection on the new image.")
+            image_bytes = base64.b64decode(json_output['images'][0])
+            detected_faces = detect_and_save_faces(image_bytes)
+            json_output['detected_faces'] = detected_faces
+
         print("Inference complete.")
         return json_output
     finally:
-        # This block is crucial for your optimization.
-        # It ensures that after the job is done, the shutdown is signaled.
         print("Job finished. Signaling for worker shutdown.")
         shutdown_flag.set()
 
