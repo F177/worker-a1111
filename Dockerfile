@@ -38,6 +38,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git && \
     cd stable-diffusion-webui && \
     git reset --hard ${A1111_RELEASE} && \
+    pip install xformers insightface onnxruntime && \ 
     pip install xformers && \
     pip install insightface && \
     pip install -r requirements_versions.txt && \
