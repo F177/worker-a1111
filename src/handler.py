@@ -91,25 +91,23 @@ def wait_for_service(url):
     return False
 
 def run_inference(inference_request):
-    """Runs inference with the provided payload, adding refiner logic."""
-    # 1. Apply LoRA to the positive prompt
+    """Runs inference with the provided payload, adding refiner and IP-Adapter logic."""
+    # [cite_start]1. Apply LoRA to the positive prompt [cite: 1]
     lora_level = inference_request.get("lora_level", 0.6)
     lora_prompt = f"<lora:epiCRealnessRC1:{lora_level}>"
     inference_request["prompt"] = f"{inference_request.get('prompt', '')}, {lora_prompt}"
     
-    # 2. Apply negative embeddings
+    # [cite_start]2. Apply negative embeddings [cite: 1]
     negative_embeddings = "veryBadImageNegative_v1.3, FastNegativeV2"
     inference_request["negative_prompt"] = f"{inference_request.get('negative_prompt', '')}, {negative_embeddings}"
 
-    # 3. CRITICAL: Tell A1111 which base model to use and set CLIP Skip
+    # [cite_start]3. Set base model and CLIP Skip via override_settings [cite: 1]
     override_settings = {
         "sd_model_checkpoint": "ultimaterealismo.safetensors",
-        
-        # <<< --- FIX: Add this line to correctly handle clip_skip --- >>>
         "CLIP_stop_at_last_layers": inference_request.get("clip_skip", 1)
     }
     
-    # Add SDXL Refiner Logic if requested
+    # [cite_start]4. Add SDXL Refiner Logic if requested [cite: 1]
     if inference_request.get("use_refiner", False):
         print("Refiner enabled for this request.")
         inference_request["refiner_checkpoint"] = "sd_xl_refiner_1.0.safetensors"
@@ -119,8 +117,26 @@ def run_inference(inference_request):
         inference_request["override_settings"] = {}
     inference_request["override_settings"].update(override_settings)
 
-    # 4. Send the request
-    # The top-level "clip_skip" will be ignored, but the one in override_settings will work
+    # 5. <<< ADD THIS SECTION TO HANDLE IP-ADAPTER >>>
+    if 'ip_adapter_image_b64' in inference_request:
+        print("IP-Adapter data found. Constructing script arguments.")
+        ip_adapter_args = {
+            "args": [
+                {
+                    "enabled": True,
+                    "image": inference_request.get("ip_adapter_image_b64"),
+                    "weight": inference_request.get("ip_adapter_weight", 0.6),
+                    "model": "ip-adapter_sdxl.bin",
+                }
+            ]
+        }
+        
+        if "alwayson_scripts" not in inference_request:
+            inference_request["alwayson_scripts"] = {}
+        # The key must be "IP-Adapter" to match the extension's name
+        inference_request["alwayson_scripts"]["IP-Adapter"] = ip_adapter_args
+    
+    # [cite_start]6. Send the final request to A1111 [cite: 1]
     response = automatic_session.post(url=f'{LOCAL_URL}/txt2img', json=inference_request, timeout=600)
     return response.json()
 

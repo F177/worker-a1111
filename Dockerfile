@@ -38,10 +38,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git && \
     cd stable-diffusion-webui && \
     git reset --hard ${A1111_RELEASE} && \
-    pip install xformers insightface onnxruntime && \ 
-    pip install xformers && \
-    pip install insightface && \
+    # Install all python packages in one efficient command
+    pip install xformers insightface onnxruntime && \
     pip install -r requirements_versions.txt && \
+    # Pre-cache the insightface models to prevent slow runtime downloads
+    python -c "from insightface.app import FaceAnalysis; app = FaceAnalysis(name='buffalo_l'); app.prepare(ctx_id=0, det_size=(640, 640))" && \
+    # Pre-download A1111's own dependencies
     python -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
 
 # Copy all models to their correct directories
