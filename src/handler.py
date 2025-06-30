@@ -27,8 +27,27 @@ A1111_COMMAND = [
 ]
 
 # --- S3 Client (for saving cropped faces) ---
-s3_client = boto3.client('s3')
+s3_client = None
 S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
+AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
+AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1') # Default to a common region if not set
+
+if S3_BUCKET_NAME and AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+    try:
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+            region_name=AWS_REGION
+        )
+        print("S3 client initialized successfully.")
+    except Exception as e:
+        print(f"Warning: Failed to initialize S3 client: {e}")
+        s3_client = None
+else:
+    print("Warning: S3 environment variables (S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) are not fully set. Face detection uploads will be disabled.")
+
 
 # --- Face Analysis Setup ---
 try:
@@ -43,6 +62,10 @@ def detect_and_save_faces(image_bytes):
     """Detects faces in an image, crops them, and uploads them to S3."""
     if not face_analyzer:
         print("Face analyzer not available, skipping face detection")
+        return []
+    
+    if not s3_client:
+        print("S3 client not configured, skipping face upload to S3.")
         return []
         
     try:
