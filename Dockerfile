@@ -30,7 +30,8 @@ WORKDIR /stable-diffusion-webui
 RUN git checkout v1.9.3
 
 # Install Python dependencies for A1111
-RUN pip install --no-cache-dir -r requirements_versions.txt
+# Instala os requisitos do A1111, fixando a versão do protobuf
+RUN pip install --no-cache-dir -r requirements_versions.txt protobuf==3.20.3
 
 # Install additional dependencies
 RUN pip install --no-cache-dir \
@@ -43,10 +44,11 @@ RUN pip install --no-cache-dir \
     albumentations==1.3.1
 
 # Install ControlNet extension
+# Instala a extensão ControlNet em uma versão específica e estável
 RUN cd extensions && \
     git clone https://github.com/Mikubill/sd-webui-controlnet.git && \
     cd sd-webui-controlnet && \
-    git checkout v1.1.440 && \
+    git checkout c96d91a && \
     pip install --no-cache-dir -r requirements.txt
 
 # Create model directories
