@@ -38,13 +38,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git && \
     cd stable-diffusion-webui && \
     git reset --hard ${A1111_RELEASE} && \
-    # Install base packages
-    pip install xformers insightface onnxruntime && \
-    # Install requirements from A1111, which brings in the old protobuf
+    # <<< FIX: Pin insightface to a compatible version >>>
+    pip install xformers insightface==0.7.3 onnxruntime && \
     pip install -r requirements_versions.txt && \
-    # <<< ADD THIS LINE TO FIX THE CONFLICT >>>
-    pip install --upgrade protobuf && \
-    # Pre-cache the insightface models to prevent slow runtime downloads
+    # The upgrade command is no longer needed with pinned versions
+    # Pre-cache the insightface models
     python -c "from insightface.app import FaceAnalysis; app = FaceAnalysis(name='buffalo_l'); app.prepare(ctx_id=0, det_size=(640, 640))" && \
     # Pre-download A1111's own dependencies
     python -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
