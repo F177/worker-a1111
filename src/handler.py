@@ -171,8 +171,13 @@ def handler(event):
 if __name__ == "__main__":
     try:
         print("Starting A1111 server in the background...")
-        # This script now launches and manages the A1111 process
-        a1111_process = subprocess.Popen(A1111_COMMAND, preexec_fn=os.setsid)
+        # Redireciona a saída do subprocesso para o log principal
+        a1111_process = subprocess.Popen(
+            A1111_COMMAND, 
+            preexec_fn=os.setsid,
+            stdout=sys.stdout,  # Adicione esta linha
+            stderr=sys.stderr   # Adicione esta linha
+        )
 
         if wait_for_service(url=f'{LOCAL_URL}/progress'):
             print("Starting RunPod serverless handler...")
