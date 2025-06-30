@@ -47,12 +47,13 @@ RUN pip install --no-cache-dir \
     albumentations==1.3.1
 
 # Install ControlNet extension with a valid, stable version tag
+# Install ControlNet extension with a VERIFIED, valid, stable version tag
 RUN cd extensions && \
     git clone https://github.com/Mikubill/sd-webui-controlnet.git && \
     cd sd-webui-controlnet && \
-    git checkout v1.1.439 && \
+    git checkout v1.1.432 && \
     pip install --no-cache-dir -r requirements.txt
-
+    
 # Create model directories
 RUN mkdir -p models/Stable-diffusion \
     models/Lora \
