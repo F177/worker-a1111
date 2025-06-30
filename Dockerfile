@@ -34,7 +34,7 @@ RUN pip install --no-cache-dir -r requirements_versions.txt
 
 # Install additional dependencies
 RUN pip install --no-cache-dir \
-    xformers \
+    xformers==0.0.24 \
     insightface==0.7.3 \
     onnxruntime-gpu \
     runpod \
