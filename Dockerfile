@@ -39,8 +39,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git && \
     cd stable-diffusion-webui && \
     git reset --hard ${A1111_RELEASE} && \
-    # Install our specific versions FIRST to resolve conflicts
-    pip install xformers insightface==0.7.3 onnxruntime albumentations==1.3.1 && \
+    # <<< FIX: Install the GPU version of onnxruntime >>>
+    pip install xformers insightface==0.7.3 onnxruntime-gpu albumentations==1.3.1 && \
     # Now, install the rest of A1111's requirements
     pip install -r requirements_versions.txt && \
     # Pre-cache the insightface models
