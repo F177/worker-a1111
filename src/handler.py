@@ -23,7 +23,7 @@ A1111_COMMAND = [
     "python", "/stable-diffusion-webui/webui.py",
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
     "--skip-version-check", "--disable-safe-unpickle", "--no-hashing",
-    "--opt-sdp-attention", "--no-download-sd-model"
+    "--opt-sdp-attention", "--no-download-sd-model", "--enable-insecure-extension-access"
 ]
 
 # --- S3 Client (for saving cropped faces) ---
@@ -33,9 +33,6 @@ S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
 # --- Face Analysis Setup ---
 face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
-
-
-# handler.py - VERSÃO CORRIGIDA
 
 def detect_and_save_faces(image_bytes):
     """Detects faces in an image, crops them, and uploads them to S3."""
@@ -88,9 +85,10 @@ def wait_for_service(url):
     """Waits for the A1111 service to be ready."""
     while not shutdown_flag.is_set():
         try:
-            requests.get(url, timeout=5)
-            print("A1111 service is ready.")
-            return True
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                print("A1111 service is ready.")
+                return True
         except requests.exceptions.RequestException:
             print("Waiting for A1111 service...")
             time.sleep(2)
@@ -99,24 +97,40 @@ def wait_for_service(url):
             return False
     return False
 
+def check_extensions():
+    """Check if required extensions are installed."""
+    try:
+        response = automatic_session.get(f'{LOCAL_URL}/scripts')
+        if response.status_code == 200:
+            scripts = response.json()
+            print(f"Available scripts: {scripts}")
+            return True
+        else:
+            print(f"Failed to get scripts: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"Error checking extensions: {e}")
+        return False
+
 def run_inference(inference_request):
     """Runs inference with the provided payload, adding refiner and IP-Adapter logic."""
-    # [cite_start]1. Apply LoRA to the positive prompt [cite: 1]
+    
+    # 1. Apply LoRA to the positive prompt
     lora_level = inference_request.get("lora_level", 0.6)
     lora_prompt = f"<lora:epiCRealnessRC1:{lora_level}>"
     inference_request["prompt"] = f"{inference_request.get('prompt', '')}, {lora_prompt}"
     
-    # [cite_start]2. Apply negative embeddings [cite: 1]
+    # 2. Apply negative embeddings
     negative_embeddings = "veryBadImageNegative_v1.3, FastNegativeV2"
     inference_request["negative_prompt"] = f"{inference_request.get('negative_prompt', '')}, {negative_embeddings}"
 
-    # [cite_start]3. Set base model and CLIP Skip via override_settings [cite: 1]
+    # 3. Set base model and CLIP Skip via override_settings
     override_settings = {
         "sd_model_checkpoint": "ultimaterealismo.safetensors",
         "CLIP_stop_at_last_layers": inference_request.get("clip_skip", 1)
     }
     
-    # [cite_start]4. Add SDXL Refiner Logic if requested [cite: 1]
+    # 4. Add SDXL Refiner Logic if requested
     if inference_request.get("use_refiner", False):
         print("Refiner enabled for this request.")
         inference_request["refiner_checkpoint"] = "sd_xl_refiner_1.0.safetensors"
@@ -126,27 +140,52 @@ def run_inference(inference_request):
         inference_request["override_settings"] = {}
     inference_request["override_settings"].update(override_settings)
 
-    # 5. <<< ADD THIS SECTION TO HANDLE IP-ADAPTER >>>
+    # 5. Handle IP-Adapter through ControlNet extension
     if 'ip_adapter_image_b64' in inference_request:
-        print("IP-Adapter data found. Constructing script arguments.")
-        ip_adapter_args = {
+        print("IP-Adapter data found. Constructing ControlNet arguments.")
+        
+        # IP-Adapter works through the ControlNet extension
+        controlnet_args = {
             "args": [
                 {
                     "enabled": True,
                     "image": inference_request.get("ip_adapter_image_b64"),
+                    "module": "ip-adapter_clip_sdxl",  # Changed to proper module
+                    "model": "ip-adapter_sdxl",  # Changed to proper model name
                     "weight": inference_request.get("ip_adapter_weight", 0.6),
-                    "model": "ip-adapter_sdxl.bin",
+                    "resize_mode": 1,
+                    "lowvram": False,
+                    "processor_res": 512,
+                    "threshold_a": 0.5,
+                    "threshold_b": 0.5,
+                    "guidance_start": 0.0,
+                    "guidance_end": 1.0,
+                    "pixel_perfect": False,
+                    "control_mode": 0
                 }
             ]
         }
         
         if "alwayson_scripts" not in inference_request:
             inference_request["alwayson_scripts"] = {}
-        # The key must be "IP-Adapter" to match the extension's name
-        inference_request["alwayson_scripts"]["IP-Adapter"] = ip_adapter_args
+        
+        # Use "controlnet" as the key for ControlNet extension
+        inference_request["alwayson_scripts"]["controlnet"] = controlnet_args
+        
+        # Remove the original IP-Adapter fields
+        del inference_request['ip_adapter_image_b64']
+        if 'ip_adapter_weight' in inference_request:
+            del inference_request['ip_adapter_weight']
     
-    # [cite_start]6. Send the final request to A1111 [cite: 1]
+    print(f"Final payload: {inference_request}")
+    
+    # 6. Send the final request to A1111
     response = automatic_session.post(url=f'{LOCAL_URL}/txt2img', json=inference_request, timeout=600)
+    
+    if response.status_code != 200:
+        print(f"A1111 API Error: {response.status_code} - {response.text}")
+        raise Exception(f"A1111 API returned status {response.status_code}: {response.text}")
+    
     return response.json()
 
 # --- RUNPOD HANDLER ---
@@ -154,7 +193,14 @@ def handler(event):
     """Main function called by RunPod to process a job."""
     try:
         print("Job received. Starting inference...")
+        print(f"Input event: {event}")
+        
+        # Check if extensions are available
+        check_extensions()
+        
         json_output = run_inference(event["input"])
+        
+        # Only run face detection if we're not using IP-Adapter (face input)
         if "ip_adapter_image_b64" not in event["input"]:
             print("Running face detection on the new image.")
             image_bytes = base64.b64decode(json_output['images'][0])
@@ -163,6 +209,9 @@ def handler(event):
 
         print("Inference complete.")
         return json_output
+    except Exception as e:
+        print(f"Error in handler: {e}")
+        return {"error": str(e)}
     finally:
         print("Job finished. Signaling for worker shutdown.")
         shutdown_flag.set()
@@ -175,11 +224,16 @@ if __name__ == "__main__":
         a1111_process = subprocess.Popen(
             A1111_COMMAND, 
             preexec_fn=os.setsid,
-            stdout=sys.stdout,  # Adicione esta linha
-            stderr=sys.stderr   # Adicione esta linha
+            stdout=sys.stdout,
+            stderr=sys.stderr
         )
 
+        # Wait for service to be ready
         if wait_for_service(url=f'{LOCAL_URL}/progress'):
+            print("A1111 service is ready. Checking extensions...")
+            time.sleep(5)  # Give extensions time to load
+            check_extensions()
+            
             print("Starting RunPod serverless handler...")
             runpod.serverless.start({"handler": handler})
 

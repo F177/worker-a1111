@@ -6,14 +6,18 @@ FROM alpine/git:2.43.0 as download
 RUN apk add --no-cache wget && \
     # Main Base Model
     wget -q -O /ultimaterealismo.safetensors "https://huggingface.co/Fabricioi/modelorealista/resolve/main/epicrealismXL_vxviiCrystalclear.safetensors" && \
-    # <<< NEW: SDXL Refiner Model >>>
+    # SDXL Refiner Model
     wget -q -O /sd_xl_refiner_1.0.safetensors "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/resolve/main/sd_xl_refiner_1.0.safetensors" && \
     # LoRA Model
     wget -q -O /epiCRealnessRC1.safetensors "https://huggingface.co/Fabricioi/modelorealista/resolve/main/epiCRealnessRC1.safetensors" && \
     # Negative Embeddings
     wget -q -O /veryBadImageNegative_v1.3.pt "https://huggingface.co/Fabricioi/modelorealista/resolve/main/verybadimagenegative_v1.3.pt" && \
-    wget -q -O /FastNegativeV2.pt "https://huggingface.co/Fabricioi/modelorealista/resolve/main/FastNegativeV2.pt"
-
+    wget -q -O /FastNegativeV2.pt "https://huggingface.co/Fabricioi/modelorealista/resolve/main/FastNegativeV2.pt" && \
+    # IP-Adapter Models
+    wget -q -O /ip-adapter_sdxl.safetensors "https://huggingface.co/h94/IP-Adapter/resolve/main/sdxl_models/ip-adapter_sdxl.safetensors" && \
+    wget -q -O /ip-adapter_sdxl_vit-h.safetensors "https://huggingface.co/h94/IP-Adapter/resolve/main/sdxl_models/ip-adapter_sdxl_vit-h.safetensors" && \
+    # CLIP Vision Model for IP-Adapter
+    wget -q -O /clip_vision_vit_h.safetensors "https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors"
 
 # ---------------------------------------------------------------------------- #
 #                         Stage 2: Build Final Image                           #
@@ -39,14 +43,21 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git && \
     cd stable-diffusion-webui && \
     git reset --hard ${A1111_RELEASE} && \
-    # <<< FIX: Install the GPU version of onnxruntime >>>
+    # Install required Python packages
     pip install xformers insightface==0.7.3 onnxruntime-gpu albumentations==1.3.1 && \
-    # Now, install the rest of A1111's requirements
+    # Install A1111's requirements
     pip install -r requirements_versions.txt && \
     # Pre-cache the insightface models
     python -c "from insightface.app import FaceAnalysis; app = FaceAnalysis(name='buffalo_l'); app.prepare(ctx_id=0, det_size=(640, 640))" && \
     # Pre-download A1111's own dependencies
     python -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
+
+# Install ControlNet extension (required for IP-Adapter)
+RUN cd /stable-diffusion-webui/extensions && \
+    git clone https://github.com/Mikubill/sd-webui-controlnet.git && \
+    cd sd-webui-controlnet && \
+    # Install ControlNet requirements
+    pip install -r requirements.txt
 
 # Copy all models to their correct directories
 COPY --from=download /ultimaterealismo.safetensors /stable-diffusion-webui/models/Stable-diffusion/
@@ -54,6 +65,15 @@ COPY --from=download /sd_xl_refiner_1.0.safetensors /stable-diffusion-webui/mode
 COPY --from=download /epiCRealnessRC1.safetensors /stable-diffusion-webui/models/Lora/
 COPY --from=download /veryBadImageNegative_v1.3.pt /stable-diffusion-webui/embeddings/
 COPY --from=download /FastNegativeV2.pt /stable-diffusion-webui/embeddings/
+
+# Create ControlNet models directory and copy IP-Adapter models
+RUN mkdir -p /stable-diffusion-webui/models/ControlNet
+COPY --from=download /ip-adapter_sdxl.safetensors /stable-diffusion-webui/models/ControlNet/
+COPY --from=download /ip-adapter_sdxl_vit-h.safetensors /stable-diffusion-webui/models/ControlNet/
+
+# Create clip_vision directory and copy CLIP model
+RUN mkdir -p /stable-diffusion-webui/models/clip_vision
+COPY --from=download /clip_vision_vit_h.safetensors /stable-diffusion-webui/models/clip_vision/
 
 # Install dependencies from your requirements.txt
 COPY requirements.txt .
