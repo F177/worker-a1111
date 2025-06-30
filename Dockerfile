@@ -34,7 +34,10 @@ RUN git checkout v1.9.3
 RUN pip install --no-cache-dir -r requirements_versions.txt protobuf==3.20.3
 
 # Install additional dependencies
+# Install all Python dependencies in a single step to resolve conflicts
 RUN pip install --no-cache-dir \
+    -r requirements_versions.txt \
+    protobuf==3.20.3 \
     xformers==0.0.24 \
     insightface==0.7.3 \
     onnxruntime-gpu \
@@ -43,12 +46,11 @@ RUN pip install --no-cache-dir \
     opencv-python \
     albumentations==1.3.1
 
-# Install ControlNet extension
-# Instala a extensão ControlNet em uma versão específica e estável
+# Install ControlNet extension with a valid, stable version tag
 RUN cd extensions && \
     git clone https://github.com/Mikubill/sd-webui-controlnet.git && \
     cd sd-webui-controlnet && \
-    git checkout c96d91a && \
+    git checkout v1.1.439 && \
     pip install --no-cache-dir -r requirements.txt
 
 # Create model directories
