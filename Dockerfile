@@ -39,10 +39,10 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git && \
     cd stable-diffusion-webui && \
     git reset --hard ${A1111_RELEASE} && \
-    # <<< FIX: Pin insightface to a compatible version >>>
-    pip install xformers insightface==0.7.3 onnxruntime && \
+    # Install our specific versions FIRST to resolve conflicts
+    pip install xformers insightface==0.7.3 onnxruntime albumentations==1.3.1 && \
+    # Now, install the rest of A1111's requirements
     pip install -r requirements_versions.txt && \
-    # The upgrade command is no longer needed with pinned versions
     # Pre-cache the insightface models
     python -c "from insightface.app import FaceAnalysis; app = FaceAnalysis(name='buffalo_l'); app.prepare(ctx_id=0, det_size=(640, 640))" && \
     # Pre-download A1111's own dependencies
