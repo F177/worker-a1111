@@ -35,29 +35,38 @@ face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CUDAE
 face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
 
 
+# handler.py - VERSÃO CORRIGIDA
+
 def detect_and_save_faces(image_bytes):
     """Detects faces in an image, crops them, and uploads them to S3."""
     try:
-        img = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
-        faces = face_analyzer.get(img)
+        # 1. Decodifica a imagem para o formato BGR (padrão do OpenCV)
+        bgr_img = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+        if bgr_img is None:
+            print("Error: could not decode image.")
+            return []
+
+        # 2. Converte a imagem de BGR para RGB
+        rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+
+        # 3. Passa a imagem RGB correta para o analisador
+        faces = face_analyzer.get(rgb_img)
         if not faces:
             return []
 
         detected_faces = []
         for i, face in enumerate(faces):
-            # Crop the face using the bounding box
+            # Para salvar, você pode usar a imagem original BGR ou a RGB.
+            # O OpenCV espera BGR para o imencode, então usar a original é mais direto.
             bbox = face.bbox.astype(int)
-            cropped_img = img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+            cropped_img = bgr_img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
 
-            # Convert cropped image back to bytes (PNG format)
             _, buffer = cv2.imencode('.png', cropped_img)
             face_bytes = buffer.tobytes()
 
-            # Generate a unique ID and S3 key
             face_id = f"f-{uuid.uuid4()}"
             s3_key = f"faces/{face_id}.png"
 
-            # Upload to S3
             s3_client.put_object(Bucket=S3_BUCKET_NAME, Key=s3_key, Body=face_bytes, ContentType='image/png')
 
             detected_faces.append({"face_id": face_id, "face_index": i})
