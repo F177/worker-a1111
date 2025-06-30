@@ -17,13 +17,13 @@ import base64
 # --- CONFIGURATION ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
 
-# A1111 is now started here. Note the --opt-sdp-attention flag is added
-# and --ckpt is correctly removed for faster startup.
+# Updated A1111 command with better flags for RunPod
 A1111_COMMAND = [
     "python", "/stable-diffusion-webui/webui.py",
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
     "--skip-version-check", "--disable-safe-unpickle", "--no-hashing",
-    "--opt-sdp-attention", "--no-download-sd-model", "--enable-insecure-extension-access"
+    "--opt-sdp-attention", "--no-download-sd-model", "--enable-insecure-extension-access",
+    "--api-log", "--cors-allow-origins=*"
 ]
 
 # --- S3 Client (for saving cropped faces) ---
@@ -31,42 +31,75 @@ s3_client = boto3.client('s3')
 S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
 
 # --- Face Analysis Setup ---
-face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
-face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
+try:
+    face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+    face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
+    print("Face analyzer initialized successfully")
+except Exception as e:
+    print(f"Warning: Face analyzer initialization failed: {e}")
+    face_analyzer = None
 
 def detect_and_save_faces(image_bytes):
     """Detects faces in an image, crops them, and uploads them to S3."""
+    if not face_analyzer:
+        print("Face analyzer not available, skipping face detection")
+        return []
+        
     try:
-        # 1. Decodifica a imagem para o formato BGR (padrão do OpenCV)
+        # Decode image
         bgr_img = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
         if bgr_img is None:
             print("Error: could not decode image.")
             return []
 
-        # 2. Converte a imagem de BGR para RGB
+        # Convert BGR to RGB for face analysis
         rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
 
-        # 3. Passa a imagem RGB correta para o analisador
+        # Detect faces
         faces = face_analyzer.get(rgb_img)
         if not faces:
+            print("No faces detected in image")
             return []
 
         detected_faces = []
         for i, face in enumerate(faces):
-            # Para salvar, você pode usar a imagem original BGR ou a RGB.
-            # O OpenCV espera BGR para o imencode, então usar a original é mais direto.
-            bbox = face.bbox.astype(int)
-            cropped_img = bgr_img[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+            try:
+                bbox = face.bbox.astype(int)
+                # Add some padding to the bounding box
+                padding = 20
+                y1 = max(0, bbox[1] - padding)
+                y2 = min(bgr_img.shape[0], bbox[3] + padding)
+                x1 = max(0, bbox[0] - padding)
+                x2 = min(bgr_img.shape[1], bbox[2] + padding)
+                
+                cropped_img = bgr_img[y1:y2, x1:x2]
+                
+                # Encode image
+                _, buffer = cv2.imencode('.png', cropped_img)
+                face_bytes = buffer.tobytes()
 
-            _, buffer = cv2.imencode('.png', cropped_img)
-            face_bytes = buffer.tobytes()
+                # Generate unique face ID
+                face_id = f"f-{uuid.uuid4()}"
+                s3_key = f"faces/{face_id}.png"
 
-            face_id = f"f-{uuid.uuid4()}"
-            s3_key = f"faces/{face_id}.png"
+                # Upload to S3
+                s3_client.put_object(
+                    Bucket=S3_BUCKET_NAME, 
+                    Key=s3_key, 
+                    Body=face_bytes, 
+                    ContentType='image/png'
+                )
 
-            s3_client.put_object(Bucket=S3_BUCKET_NAME, Key=s3_key, Body=face_bytes, ContentType='image/png')
-
-            detected_faces.append({"face_id": face_id, "face_index": i})
+                detected_faces.append({
+                    "face_id": face_id, 
+                    "face_index": i,
+                    "bbox": bbox.tolist()
+                })
+                print(f"Saved face {i} as {face_id}")
+                
+            except Exception as e:
+                print(f"Error processing face {i}: {e}")
+                continue
 
         return detected_faces
     except Exception as e:
@@ -81,39 +114,58 @@ automatic_session = requests.Session()
 retries = Retry(total=10, backoff_factor=0.2, status_forcelist=[502, 503, 504])
 automatic_session.mount('http://', HTTPAdapter(max_retries=retries))
 
-def wait_for_service(url):
+def wait_for_service(url, max_wait=300):
     """Waits for the A1111 service to be ready."""
-    while not shutdown_flag.is_set():
+    start_time = time.time()
+    while not shutdown_flag.is_set() and (time.time() - start_time) < max_wait:
         try:
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=10)
             if response.status_code == 200:
                 print("A1111 service is ready.")
                 return True
-        except requests.exceptions.RequestException:
-            print("Waiting for A1111 service...")
-            time.sleep(2)
+        except requests.exceptions.RequestException as e:
+            print(f"Waiting for A1111 service... ({e})")
+            time.sleep(5)
         except Exception as e:
             print(f"Unexpected error while waiting for service: {e}")
-            return False
+            time.sleep(5)
+    
+    print(f"Service failed to start within {max_wait} seconds")
     return False
 
-def check_extensions():
-    """Check if required extensions are installed."""
+def check_controlnet_available():
+    """Check if ControlNet extension is available."""
     try:
-        response = automatic_session.get(f'{LOCAL_URL}/scripts')
+        response = automatic_session.get(f'{LOCAL_URL}/controlnet/version', timeout=10)
         if response.status_code == 200:
-            scripts = response.json()
-            print(f"Available scripts: {scripts}")
+            version_info = response.json()
+            print(f"ControlNet version: {version_info}")
             return True
         else:
-            print(f"Failed to get scripts: {response.status_code}")
+            print(f"ControlNet not available: {response.status_code}")
             return False
     except Exception as e:
-        print(f"Error checking extensions: {e}")
+        print(f"Error checking ControlNet: {e}")
         return False
 
+def get_controlnet_models():
+    """Get available ControlNet models."""
+    try:
+        response = automatic_session.get(f'{LOCAL_URL}/controlnet/model_list', timeout=10)
+        if response.status_code == 200:
+            models = response.json()
+            print(f"Available ControlNet models: {models}")
+            return models
+        else:
+            print(f"Failed to get ControlNet models: {response.status_code}")
+            return []
+    except Exception as e:
+        print(f"Error getting ControlNet models: {e}")
+        return []
+
 def run_inference(inference_request):
-    """Runs inference with the provided payload, adding refiner and IP-Adapter logic."""
+    """Runs inference with the provided payload."""
+    print(f"Starting inference with keys: {list(inference_request.keys())}")
     
     # 1. Apply LoRA to the positive prompt
     lora_level = inference_request.get("lora_level", 0.6)
@@ -140,113 +192,183 @@ def run_inference(inference_request):
         inference_request["override_settings"] = {}
     inference_request["override_settings"].update(override_settings)
 
-    # 5. Handle IP-Adapter through ControlNet extension
+    # 5. Handle IP-Adapter through ControlNet
     if 'ip_adapter_image_b64' in inference_request:
-        print("IP-Adapter data found. Constructing ControlNet arguments.")
+        print("IP-Adapter image detected. Setting up ControlNet...")
         
-        # IP-Adapter works through the ControlNet extension
-        controlnet_args = {
-            "args": [
-                {
-                    "enabled": True,
-                    "image": inference_request.get("ip_adapter_image_b64"),
-                    "module": "ip-adapter_clip_sdxl",  # Changed to proper module
-                    "model": "ip-adapter_sdxl",  # Changed to proper model name
-                    "weight": inference_request.get("ip_adapter_weight", 0.6),
-                    "resize_mode": 1,
-                    "lowvram": False,
-                    "processor_res": 512,
-                    "threshold_a": 0.5,
-                    "threshold_b": 0.5,
-                    "guidance_start": 0.0,
-                    "guidance_end": 1.0,
-                    "pixel_perfect": False,
-                    "control_mode": 0
-                }
-            ]
-        }
+        # Check if ControlNet is available
+        if not check_controlnet_available():
+            print("Warning: ControlNet not available, IP-Adapter will be skipped")
+        else:
+            # Get available models
+            available_models = get_controlnet_models()
+            
+            # Find IP-Adapter model
+            ip_adapter_model = None
+            for model in available_models:
+                if 'ip-adapter' in model.lower() and 'sdxl' in model.lower():
+                    ip_adapter_model = model
+                    break
+            
+            if not ip_adapter_model:
+                print("Warning: No IP-Adapter SDXL model found. Available models:", available_models)
+                ip_adapter_model = "ip-adapter_sdxl [7d943a46]"  # Default fallback
+            
+            print(f"Using IP-Adapter model: {ip_adapter_model}")
+            
+            # Set up ControlNet args for IP-Adapter
+            controlnet_args = {
+                "args": [
+                    {
+                        "enabled": True,
+                        "image": inference_request['ip_adapter_image_b64'],
+                        "module": "ip-adapter_clip_sdxl",
+                        "model": ip_adapter_model,
+                        "weight": inference_request.get("ip_adapter_weight", 0.6),
+                        "resize_mode": 1,
+                        "lowvram": False,
+                        "processor_res": 512,
+                        "threshold_a": 0.5,
+                        "threshold_b": 0.5,
+                        "guidance_start": 0.0,
+                        "guidance_end": 1.0,
+                        "pixel_perfect": False,
+                        "control_mode": 0
+                    }
+                ]
+            }
+            
+            if "alwayson_scripts" not in inference_request:
+                inference_request["alwayson_scripts"] = {}
+            
+            inference_request["alwayson_scripts"]["controlnet"] = controlnet_args
         
-        if "alwayson_scripts" not in inference_request:
-            inference_request["alwayson_scripts"] = {}
-        
-        # Use "controlnet" as the key for ControlNet extension
-        inference_request["alwayson_scripts"]["controlnet"] = controlnet_args
-        
-        # Remove the original IP-Adapter fields
+        # Clean up the original IP-Adapter fields
         del inference_request['ip_adapter_image_b64']
         if 'ip_adapter_weight' in inference_request:
             del inference_request['ip_adapter_weight']
     
-    print(f"Final payload: {inference_request}")
-    
-    # 6. Send the final request to A1111
-    response = automatic_session.post(url=f'{LOCAL_URL}/txt2img', json=inference_request, timeout=600)
-    
-    if response.status_code != 200:
-        print(f"A1111 API Error: {response.status_code} - {response.text}")
-        raise Exception(f"A1111 API returned status {response.status_code}: {response.text}")
-    
-    return response.json()
+    # 6. Send request to A1111
+    print("Sending request to A1111...")
+    try:
+        response = automatic_session.post(
+            url=f'{LOCAL_URL}/txt2img', 
+            json=inference_request, 
+            timeout=600
+        )
+        
+        if response.status_code != 200:
+            error_msg = f"A1111 API Error: {response.status_code} - {response.text}"
+            print(error_msg)
+            return {"error": error_msg}
+        
+        result = response.json()
+        print("A1111 request completed successfully")
+        return result
+        
+    except Exception as e:
+        error_msg = f"Error calling A1111 API: {str(e)}"
+        print(error_msg)
+        return {"error": error_msg}
 
 # --- RUNPOD HANDLER ---
 def handler(event):
     """Main function called by RunPod to process a job."""
+    print(f"=== RunPod Job Started ===")
+    print(f"Event keys: {list(event.keys()) if event else 'None'}")
+    
     try:
-        print("Job received. Starting inference...")
-        print(f"Input event: {event}")
+        # Validate input
+        if not event or "input" not in event:
+            return {"error": "No input provided in event"}
         
-        # Check if extensions are available
-        check_extensions()
+        input_data = event["input"]
+        print(f"Input data keys: {list(input_data.keys())}")
         
-        json_output = run_inference(event["input"])
+        # Run inference
+        print("Starting inference...")
+        json_output = run_inference(input_data)
         
-        # Only run face detection if we're not using IP-Adapter (face input)
-        if "ip_adapter_image_b64" not in event["input"]:
-            print("Running face detection on the new image.")
-            image_bytes = base64.b64decode(json_output['images'][0])
-            detected_faces = detect_and_save_faces(image_bytes)
-            json_output['detected_faces'] = detected_faces
-
-        print("Inference complete.")
+        # Check for errors
+        if "error" in json_output:
+            print(f"Inference failed: {json_output['error']}")
+            return json_output
+        
+        # Run face detection only if we're not using IP-Adapter input
+        if "ip_adapter_image_b64" not in input_data and "images" in json_output:
+            print("Running face detection on generated image...")
+            try:
+                image_bytes = base64.b64decode(json_output['images'][0])
+                detected_faces = detect_and_save_faces(image_bytes)
+                json_output['detected_faces'] = detected_faces
+                print(f"Face detection completed. Found {len(detected_faces)} faces.")
+            except Exception as e:
+                print(f"Face detection failed: {e}")
+                json_output['detected_faces'] = []
+        
+        print("=== RunPod Job Completed Successfully ===")
         return json_output
+        
     except Exception as e:
-        print(f"Error in handler: {e}")
-        return {"error": str(e)}
+        error_msg = f"Handler error: {str(e)}"
+        print(f"=== RunPod Job Failed ===")
+        print(error_msg)
+        return {"error": error_msg}
+    
     finally:
-        print("Job finished. Signaling for worker shutdown.")
+        # Signal shutdown after job completion
+        print("Signaling worker shutdown...")
         shutdown_flag.set()
 
 # --- MAIN ENTRY POINT ---
 if __name__ == "__main__":
+    print("=== RunPod Worker Starting ===")
+    
     try:
-        print("Starting A1111 server in the background...")
-        # Redireciona a saída do subprocesso para o log principal
+        print("Starting A1111 server...")
         a1111_process = subprocess.Popen(
             A1111_COMMAND, 
             preexec_fn=os.setsid,
             stdout=sys.stdout,
             stderr=sys.stderr
         )
-
-        # Wait for service to be ready
-        if wait_for_service(url=f'{LOCAL_URL}/progress'):
-            print("A1111 service is ready. Checking extensions...")
-            time.sleep(5)  # Give extensions time to load
-            check_extensions()
+        
+        print("Waiting for A1111 service to be ready...")
+        if wait_for_service(url=f'{LOCAL_URL}/progress', max_wait=300):
+            print("A1111 service is ready!")
+            
+            # Give extensions time to load
+            print("Waiting for extensions to load...")
+            time.sleep(10)
+            
+            # Check ControlNet availability
+            check_controlnet_available()
+            get_controlnet_models()
             
             print("Starting RunPod serverless handler...")
             runpod.serverless.start({"handler": handler})
+        else:
+            print("Failed to start A1111 service")
+            sys.exit(1)
 
-        # The script will pause here until the handler sets the shutdown_flag
+        # Wait for shutdown signal
         shutdown_flag.wait()
+        print("Shutdown signal received")
 
     except Exception as e:
-        print(f"A fatal error occurred in the main process: {e}")
+        print(f"Fatal error in main process: {e}")
         shutdown_flag.set()
+        sys.exit(1)
+    
     finally:
-        # This block ensures the A1111 server is terminated cleanly.
+        # Clean shutdown
         if a1111_process and a1111_process.poll() is None:
             print("Terminating A1111 process...")
-            os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
-            a1111_process.wait()
-        print("Worker has shut down.")
+            try:
+                os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
+                a1111_process.wait(timeout=30)
+            except:
+                print("Force killing A1111 process...")
+                os.killpg(os.getpgid(a1111_process.pid), signal.SIGKILL)
+        
+        print("=== RunPod Worker Shutdown Complete ===")
