@@ -46,6 +46,7 @@ RUN pip install --no-cache-dir \
 RUN cd extensions && \
     git clone https://github.com/Mikubill/sd-webui-controlnet.git && \
     cd sd-webui-controlnet && \
+    git checkout v1.1.440 && \
     pip install --no-cache-dir -r requirements.txt
 
 # Create model directories
