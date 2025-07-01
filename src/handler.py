@@ -15,12 +15,11 @@ import uuid
 import base64 
 
 # --- CONFIGURATION ---
-LOCAL_URL = "http://127.0.0.1:3000"
+LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
 
-# Updated A1111 command with better flags for RunPod.
+# Updated A1111 command with better flags for RunPod
 A1111_COMMAND = [
     "python", "/stable-diffusion-webui/webui.py",
-    "--listen",
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
     "--skip-version-check", "--disable-safe-unpickle", "--no-hashing",
     "--opt-sdp-attention", "--no-download-sd-model", "--enable-insecure-extension-access",
@@ -33,8 +32,7 @@ S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
 
 # --- Face Analysis Setup ---
 try:
-    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-    face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=providers)
+    face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
     face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
     print("Face analyzer initialized successfully")
 except Exception as e:
@@ -48,12 +46,16 @@ def detect_and_save_faces(image_bytes):
         return []
         
     try:
+        # Decode image
         bgr_img = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
         if bgr_img is None:
             print("Error: could not decode image.")
             return []
 
+        # Convert BGR to RGB for face analysis
         rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+
+        # Detect faces
         faces = face_analyzer.get(rgb_img)
         if not faces:
             print("No faces detected in image")
@@ -63,6 +65,7 @@ def detect_and_save_faces(image_bytes):
         for i, face in enumerate(faces):
             try:
                 bbox = face.bbox.astype(int)
+                # Add some padding to the bounding box
                 padding = 20
                 y1 = max(0, bbox[1] - padding)
                 y2 = min(bgr_img.shape[0], bbox[3] + padding)
@@ -70,12 +73,16 @@ def detect_and_save_faces(image_bytes):
                 x2 = min(bgr_img.shape[1], bbox[2] + padding)
                 
                 cropped_img = bgr_img[y1:y2, x1:x2]
+                
+                # Encode image
                 _, buffer = cv2.imencode('.png', cropped_img)
                 face_bytes = buffer.tobytes()
 
+                # Generate unique face ID
                 face_id = f"f-{uuid.uuid4()}"
                 s3_key = f"faces/{face_id}.png"
 
+                # Upload to S3
                 s3_client.put_object(
                     Bucket=S3_BUCKET_NAME, 
                     Key=s3_key, 
@@ -89,9 +96,11 @@ def detect_and_save_faces(image_bytes):
                     "bbox": bbox.tolist()
                 })
                 print(f"Saved face {i} as {face_id}")
+                
             except Exception as e:
                 print(f"Error processing face {i}: {e}")
                 continue
+
         return detected_faces
     except Exception as e:
         print(f"Error in face detection: {e}")
@@ -124,34 +133,116 @@ def wait_for_service(url, max_wait=300):
     print(f"Service failed to start within {max_wait} seconds")
     return False
 
+def check_controlnet_available():
+    """Check if ControlNet extension is available."""
+    try:
+        response = automatic_session.get(f'{LOCAL_URL}/controlnet/version', timeout=10)
+        if response.status_code == 200:
+            version_info = response.json()
+            print(f"ControlNet version: {version_info}")
+            return True
+        else:
+            print(f"ControlNet not available: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"Error checking ControlNet: {e}")
+        return False
+
+def get_controlnet_models():
+    """Get available ControlNet models."""
+    try:
+        response = automatic_session.get(f'{LOCAL_URL}/controlnet/model_list', timeout=10)
+        if response.status_code == 200:
+            models = response.json()
+            print(f"Available ControlNet models: {models}")
+            return models
+        else:
+            print(f"Failed to get ControlNet models: {response.status_code}")
+            return []
+    except Exception as e:
+        print(f"Error getting ControlNet models: {e}")
+        return []
+
 def run_inference(inference_request):
     """Runs inference with the provided payload."""
     print(f"Starting inference with keys: {list(inference_request.keys())}")
     
-    # Apply LoRA to the positive prompt
+    # 1. Apply LoRA to the positive prompt
+    # --- CHANGE: Get lora_level from the request payload ---
     lora_level = inference_request.get("lora_level", 0.6)
     lora_prompt = f"<lora:epiCRealnessRC1:{lora_level}>"
     inference_request["prompt"] = f"{inference_request.get('prompt', '')}, {lora_prompt}"
     
-    # Apply negative embeddings
+    # 2. Apply negative embeddings
     negative_embeddings = "veryBadImageNegative_v1.3, FastNegativeV2"
     inference_request["negative_prompt"] = f"{inference_request.get('negative_prompt', '')}, {negative_embeddings}"
 
-    # Set base model and CLIP Skip via override_settings
+    # 3. Set base model and CLIP Skip via override_settings
     override_settings = {
         "sd_model_checkpoint": "ultimaterealismo.safetensors",
+        # --- CHANGE: Get clip_skip from the request payload ---
         "CLIP_stop_at_last_layers": inference_request.get("clip_skip", 1)
     }
     
+    # 4. Add SDXL Refiner Logic if requested
+    if inference_request.get("use_refiner", False):
+        print("Refiner enabled for this request.")
+        inference_request["refiner_checkpoint"] = "sd_xl_refiner_1.0.safetensors"
+        inference_request["refiner_switch_at"] = inference_request.get("refiner_switch_at", 0.8)
+
     if "override_settings" not in inference_request:
         inference_request["override_settings"] = {}
     inference_request["override_settings"].update(override_settings)
 
-    # Send request to A1111
+    # 5. Handle IP-Adapter through ControlNet
+    if 'ip_adapter_image_b64' in inference_request:
+        print("IP-Adapter image detected. Setting up ControlNet...")
+        
+        if not check_controlnet_available():
+            print("Warning: ControlNet not available, IP-Adapter will be skipped")
+        else:
+            available_models = get_controlnet_models()
+            ip_adapter_model = None
+            for model in available_models:
+                if 'ip-adapter' in model.lower() and 'sdxl' in model.lower():
+                    ip_adapter_model = model
+                    break
+            
+            if not ip_adapter_model:
+                print("Warning: No IP-Adapter SDXL model found. Available models:", available_models)
+                ip_adapter_model = "ip-adapter_sdxl [7d943a46]"
+            
+            print(f"Using IP-Adapter model: {ip_adapter_model}")
+            
+            controlnet_args = {
+                "args": [
+                    {
+                        "enabled": True,
+                        "image": inference_request['ip_adapter_image_b64'],
+                        "module": "ip-adapter_clip_sdxl",
+                        "model": ip_adapter_model,
+                        "weight": inference_request.get("ip_adapter_weight", 0.6),
+                        "resize_mode": 1, "lowvram": False, "processor_res": 512,
+                        "threshold_a": 0.5, "threshold_b": 0.5, "guidance_start": 0.0,
+                        "guidance_end": 1.0, "pixel_perfect": False, "control_mode": 0
+                    }
+                ]
+            }
+            
+            if "alwayson_scripts" not in inference_request:
+                inference_request["alwayson_scripts"] = {}
+            
+            inference_request["alwayson_scripts"]["controlnet"] = controlnet_args
+        
+        del inference_request['ip_adapter_image_b64']
+        if 'ip_adapter_weight' in inference_request:
+            del inference_request['ip_adapter_weight']
+    
+    # 6. Send request to A1111
     print("Sending request to A1111...")
     try:
         response = automatic_session.post(
-            url=f'{LOCAL_URL}/sdapi/v1/txt2img', 
+            url=f'{LOCAL_URL}/txt2img', 
             json=inference_request, 
             timeout=600
         )
@@ -190,8 +281,7 @@ def handler(event):
             print(f"Inference failed: {json_output['error']}")
             return json_output
         
-        # Run face detection only if Reactor was NOT used
-        if "reactor" not in input_data.get("alwayson_scripts", {}) and "images" in json_output:
+        if "ip_adapter_image_b64" not in input_data and "images" in json_output:
             print("Running face detection on generated image...")
             try:
                 image_bytes = base64.b64decode(json_output['images'][0])
@@ -216,50 +306,50 @@ def handler(event):
         shutdown_flag.set()
 
 # --- MAIN ENTRY POINT ---
-# --- TEMPORARY DIAGNOSTIC CODE ---
 if __name__ == "__main__":
-    print("=== Starting Diagnostic Mode ===")
-    a1111_process = None
+    print("=== RunPod Worker Starting ===")
+    
     try:
-        print("Starting A1111 server for diagnostic...")
+        print("Starting A1111 server...")
         a1111_process = subprocess.Popen(
             A1111_COMMAND, 
             preexec_fn=os.setsid,
             stdout=sys.stdout,
             stderr=sys.stderr
         )
-
+        
         print("Waiting for A1111 service to be ready...")
-        if wait_for_service(url=f'{LOCAL_URL}/sdapi/v1/progress', max_wait=300):
-            print("A1111 service is ready. Querying for samplers...")
+        if wait_for_service(url=f'{LOCAL_URL}/progress', max_wait=300):
+            print("A1111 service is ready!")
             
-            # Query the samplers endpoint
-            samplers_url = f'{LOCAL_URL}/sdapi/v1/samplers'
-            response = requests.get(samplers_url, timeout=20)
-            response.raise_for_status()
-            samplers = response.json()
+            print("Waiting for extensions to load...")
+            time.sleep(10)
             
-            print("\n\n" + "="*50)
-            print(">>> AVAILABLE SAMPLERS LIST <<<")
-            print(json.dumps(samplers, indent=2))
-            print("="*50 + "\n\n")
-            print("Diagnostic complete. Please copy the list above and send it back.")
-
+            check_controlnet_available()
+            get_controlnet_models()
+            
+            print("Starting RunPod serverless handler...")
+            runpod.serverless.start({"handler": handler})
         else:
-            print("Failed to start A1111 service for diagnostic.")
+            print("Failed to start A1111 service")
+            sys.exit(1)
+
+        shutdown_flag.wait()
+        print("Shutdown signal received")
 
     except Exception as e:
-        print(f"An error occurred during the diagnostic: {e}")
+        print(f"Fatal error in main process: {e}")
+        shutdown_flag.set()
+        sys.exit(1)
     
     finally:
-        # Cleanly shutdown the A1111 server
         if a1111_process and a1111_process.poll() is None:
-            print("Shutting down A1111 server...")
+            print("Terminating A1111 process...")
             try:
                 os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
                 a1111_process.wait(timeout=30)
             except:
+                print("Force killing A1111 process...")
                 os.killpg(os.getpgid(a1111_process.pid), signal.SIGKILL)
         
-        print("=== Exiting Diagnostic Mode ===")
-        sys.exit(0)
+        print("=== RunPod Worker Shutdown Complete ===")
