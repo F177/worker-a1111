@@ -167,7 +167,7 @@ def run_inference(inference_request):
     """Runs inference with the provided payload."""
     print(f"Starting inference with keys: {list(inference_request.keys())}")
     
-    # 1. Apply LoRA to the positive prompt
+    # 1. Apply LoRA to the positive prompta
     # --- CHANGE: Get lora_level from the request payload ---
     lora_level = inference_request.get("lora_level", 0.6)
     lora_prompt = f"<lora:epiCRealnessRC1:{lora_level}>"
