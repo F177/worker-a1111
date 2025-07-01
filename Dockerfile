@@ -8,7 +8,7 @@ ENV ROOT=/stable-diffusion-webui
 
 WORKDIR /
 
-# Install system dependencies
+# Install system dependencies including cuDNN
 RUN apt-get update && apt-get install -y \
     wget \
     git \
@@ -22,6 +22,8 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     libgoogle-perftools4 \
     libtcmalloc-minimal4 \
+    libcudnn8 \
+    libcudnn8-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone Stable Diffusion WebUI
@@ -29,30 +31,28 @@ RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git /stabl
 WORKDIR /stable-diffusion-webui
 RUN git checkout v1.9.3
 
-# Install Python dependencies for A1111
-# Instala os requisitos do A1111, fixando a versão do protobuf
+# Install ControlNet extension first (before other dependencies)
+RUN cd extensions && \
+    git clone https://github.com/Mikubill/sd-webui-controlnet.git && \
+    cd sd-webui-controlnet && \
+    git checkout v1.1.455
 
-
-# Install additional dependencies
-# Install all Python dependencies in a single step to resolve conflicts
 # Install Python dependencies for A1111 and our custom libs in a single layer
 RUN pip install --no-cache-dir \
     -r requirements_versions.txt \
     protobuf==3.20.3 \
     xformers==0.0.24 \
     insightface==0.7.3 \
-    onnxruntime-gpu \
+    onnxruntime-gpu==1.16.3 \
     runpod \
     boto3 \
     opencv-python \
     albumentations==1.3.1
 
-# Install ControlNet extension using the latest version
-RUN cd extensions && \
-    git clone https://github.com/Mikubill/sd-webui-controlnet.git && \
-    cd sd-webui-controlnet && \
+# Install ControlNet requirements
+RUN cd extensions/sd-webui-controlnet && \
     pip install --no-cache-dir -r requirements.txt
-    
+
 # Create model directories
 RUN mkdir -p models/Stable-diffusion \
     models/Lora \

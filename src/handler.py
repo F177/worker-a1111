@@ -15,43 +15,26 @@ import uuid
 import base64 
 
 # --- CONFIGURATION ---
-LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
+LOCAL_URL = "http://127.0.0.1:3000"
 
-# Updated A1111 command with better flags for RunPod
+# Updated A1111 command with ControlNet API enabled
 A1111_COMMAND = [
     "python", "/stable-diffusion-webui/webui.py",
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
     "--skip-version-check", "--disable-safe-unpickle", "--no-hashing",
     "--opt-sdp-attention", "--no-download-sd-model", "--enable-insecure-extension-access",
-    "--api-log", "--cors-allow-origins=*"
+    "--api-log", "--cors-allow-origins=*", "--api-server-stop"
 ]
 
 # --- S3 Client (for saving cropped faces) ---
-s3_client = None
+s3_client = boto3.client('s3')
 S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
-AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
-AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1') # Default to a common region if not set
-
-if S3_BUCKET_NAME and AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
-    try:
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-            region_name=AWS_REGION
-        )
-        print("S3 client initialized successfully.")
-    except Exception as e:
-        print(f"Warning: Failed to initialize S3 client: {e}")
-        s3_client = None
-else:
-    print("Warning: S3 environment variables (S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) are not fully set. Face detection uploads will be disabled.")
-
 
 # --- Face Analysis Setup ---
 try:
-    face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+    # Initialize with CUDA if available, fallback to CPU
+    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+    face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=providers)
     face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
     print("Face analyzer initialized successfully")
 except Exception as e:
@@ -62,10 +45,6 @@ def detect_and_save_faces(image_bytes):
     """Detects faces in an image, crops them, and uploads them to S3."""
     if not face_analyzer:
         print("Face analyzer not available, skipping face detection")
-        return []
-    
-    if not s3_client:
-        print("S3 client not configured, skipping face upload to S3.")
         return []
         
     try:
@@ -159,6 +138,7 @@ def wait_for_service(url, max_wait=300):
 def check_controlnet_available():
     """Check if ControlNet extension is available."""
     try:
+        # Try the correct ControlNet API endpoint
         response = automatic_session.get(f'{LOCAL_URL}/controlnet/version', timeout=10)
         if response.status_code == 200:
             version_info = response.json()
@@ -177,8 +157,9 @@ def get_controlnet_models():
         response = automatic_session.get(f'{LOCAL_URL}/controlnet/model_list', timeout=10)
         if response.status_code == 200:
             models = response.json()
-            print(f"Available ControlNet models: {models}")
-            return models
+            models_list = models.get('model_list', []) if isinstance(models, dict) else models
+            print(f"Available ControlNet models: {models_list}")
+            return models_list
         else:
             print(f"Failed to get ControlNet models: {response.status_code}")
             return []
@@ -229,13 +210,14 @@ def run_inference(inference_request):
             # Find IP-Adapter model
             ip_adapter_model = None
             for model in available_models:
-                if 'ip-adapter' in model.lower() and 'sdxl' in model.lower():
+                if isinstance(model, str) and 'ip-adapter' in model.lower() and 'sdxl' in model.lower():
                     ip_adapter_model = model
                     break
             
             if not ip_adapter_model:
                 print("Warning: No IP-Adapter SDXL model found. Available models:", available_models)
-                ip_adapter_model = "ip-adapter_sdxl [7d943a46]"  # Default fallback
+                # Try with the filename we downloaded
+                ip_adapter_model = "ip-adapter_sdxl"
             
             print(f"Using IP-Adapter model: {ip_adapter_model}")
             
@@ -275,7 +257,7 @@ def run_inference(inference_request):
     print("Sending request to A1111...")
     try:
         response = automatic_session.post(
-            url=f'{LOCAL_URL}/txt2img', 
+            url=f'{LOCAL_URL}/sdapi/v1/txt2img', 
             json=inference_request, 
             timeout=600
         )
@@ -357,16 +339,19 @@ if __name__ == "__main__":
         )
         
         print("Waiting for A1111 service to be ready...")
-        if wait_for_service(url=f'{LOCAL_URL}/progress', max_wait=300):
+        if wait_for_service(url=f'{LOCAL_URL}/sdapi/v1/progress', max_wait=300):
             print("A1111 service is ready!")
             
             # Give extensions time to load
             print("Waiting for extensions to load...")
-            time.sleep(10)
+            time.sleep(15)  # Increased wait time for ControlNet
             
             # Check ControlNet availability
-            check_controlnet_available()
-            get_controlnet_models()
+            controlnet_available = check_controlnet_available()
+            if controlnet_available:
+                get_controlnet_models()
+            else:
+                print("ControlNet not available - IP-Adapter functionality will be limited")
             
             print("Starting RunPod serverless handler...")
             runpod.serverless.start({"handler": handler})
