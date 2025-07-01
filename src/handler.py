@@ -18,12 +18,14 @@ import base64
 LOCAL_URL = "http://127.0.0.1:3000"
 
 # Updated A1111 command with ControlNet API enabled
+# Updated A1111 command with better flags for RunPod
 A1111_COMMAND = [
     "python", "/stable-diffusion-webui/webui.py",
+    "--listen",  # <-- ADD THIS LINE
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
     "--skip-version-check", "--disable-safe-unpickle", "--no-hashing",
     "--opt-sdp-attention", "--no-download-sd-model", "--enable-insecure-extension-access",
-    "--api-log", "--cors-allow-origins=*", "--api-server-stop"
+    "--api-log", "--cors-allow-origins=*"
 ]
 
 # --- S3 Client (for saving cropped faces) ---
@@ -326,6 +328,7 @@ def handler(event):
         shutdown_flag.set()
 
 # --- MAIN ENTRY POINT ---
+# --- MAIN ENTRY POINT ---
 if __name__ == "__main__":
     print("=== RunPod Worker Starting ===")
     
@@ -338,26 +341,33 @@ if __name__ == "__main__":
             stderr=sys.stderr
         )
         
+        # 1. Wait for the base A1111 API to be ready
         print("Waiting for A1111 service to be ready...")
-        if wait_for_service(url=f'{LOCAL_URL}/sdapi/v1/progress', max_wait=300):
-            print("A1111 service is ready!")
-            
-            # Give extensions time to load
-            print("Waiting for extensions to load...")
-            time.sleep(15)  # Increased wait time for ControlNet
-            
-            # Check ControlNet availability
-            controlnet_available = check_controlnet_available()
-            if controlnet_available:
-                get_controlnet_models()
-            else:
-                print("ControlNet not available - IP-Adapter functionality will be limited")
-            
-            print("Starting RunPod serverless handler...")
-            runpod.serverless.start({"handler": handler})
-        else:
+        if not wait_for_service(url=f'{LOCAL_URL}/progress', max_wait=300):
             print("Failed to start A1111 service")
             sys.exit(1)
+        print("A1111 service is ready!")
+
+        # 2. Wait specifically for the ControlNet API to be available
+        print("Waiting for ControlNet extension to load...")
+        controlnet_ready = False
+        start_time = time.time()
+        while not shutdown_flag.is_set() and (time.time() - start_time) < 180: # 3-minute timeout
+            if check_controlnet_available():
+                controlnet_ready = True
+                break
+            time.sleep(2)
+
+        if not controlnet_ready:
+            print("Fatal: ControlNet extension failed to load in time.")
+            sys.exit(1)
+            
+        print("ControlNet is ready!")
+        get_controlnet_models() # Get and print models once ready
+        
+        # 3. Start the RunPod handler
+        print("Starting RunPod serverless handler...")
+        runpod.serverless.start({"handler": handler})
 
         # Wait for shutdown signal
         shutdown_flag.wait()
