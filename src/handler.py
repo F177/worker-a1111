@@ -164,15 +164,17 @@ def get_controlnet_models():
         return []
 
 def run_inference(inference_request):
-    """Runs inference with the provided payload."""
+    """
+    Runs inference by passing the request directly to the A1111 API.
+    This function now correctly handles 'alwayson_scripts' like Reactor.
+    """
     print(f"Starting inference with keys: {list(inference_request.keys())}")
-    
-    # 1. Apply LoRA to the positive prompta
-    # --- CHANGE: Get lora_level from the request payload ---
+
+    # 1. Apply LoRA to the positive prompt
     lora_level = inference_request.get("lora_level", 0.6)
     lora_prompt = f"<lora:epiCRealnessRC1:{lora_level}>"
     inference_request["prompt"] = f"{inference_request.get('prompt', '')}, {lora_prompt}"
-    
+
     # 2. Apply negative embeddings
     negative_embeddings = "veryBadImageNegative_v1.3, FastNegativeV2"
     inference_request["negative_prompt"] = f"{inference_request.get('negative_prompt', '')}, {negative_embeddings}"
@@ -180,10 +182,9 @@ def run_inference(inference_request):
     # 3. Set base model and CLIP Skip via override_settings
     override_settings = {
         "sd_model_checkpoint": "ultimaterealismo.safetensors",
-        # --- CHANGE: Get clip_skip from the request payload ---
         "CLIP_stop_at_last_layers": inference_request.get("clip_skip", 1)
     }
-    
+
     # 4. Add SDXL Refiner Logic if requested
     if inference_request.get("use_refiner", False):
         print("Refiner enabled for this request.")
@@ -194,68 +195,27 @@ def run_inference(inference_request):
         inference_request["override_settings"] = {}
     inference_request["override_settings"].update(override_settings)
 
-    # 5. Handle IP-Adapter through ControlNet
-    if 'ip_adapter_image_b64' in inference_request:
-        print("IP-Adapter image detected. Setting up ControlNet...")
-        
-        if not check_controlnet_available():
-            print("Warning: ControlNet not available, IP-Adapter will be skipped")
-        else:
-            available_models = get_controlnet_models()
-            ip_adapter_model = None
-            for model in available_models:
-                if 'ip-adapter' in model.lower() and 'sdxl' in model.lower():
-                    ip_adapter_model = model
-                    break
-            
-            if not ip_adapter_model:
-                print("Warning: No IP-Adapter SDXL model found. Available models:", available_models)
-                ip_adapter_model = "ip-adapter_sdxl [7d943a46]"
-            
-            print(f"Using IP-Adapter model: {ip_adapter_model}")
-            
-            controlnet_args = {
-                "args": [
-                    {
-                        "enabled": True,
-                        "image": inference_request['ip_adapter_image_b64'],
-                        "module": "ip-adapter_clip_sdxl",
-                        "model": ip_adapter_model,
-                        "weight": inference_request.get("ip_adapter_weight", 0.6),
-                        "resize_mode": 1, "lowvram": False, "processor_res": 512,
-                        "threshold_a": 0.5, "threshold_b": 0.5, "guidance_start": 0.0,
-                        "guidance_end": 1.0, "pixel_perfect": False, "control_mode": 0
-                    }
-                ]
-            }
-            
-            if "alwayson_scripts" not in inference_request:
-                inference_request["alwayson_scripts"] = {}
-            
-            inference_request["alwayson_scripts"]["controlnet"] = controlnet_args
-        
-        del inference_request['ip_adapter_image_b64']
-        if 'ip_adapter_weight' in inference_request:
-            del inference_request['ip_adapter_weight']
-    
-    # 6. Send request to A1111
+    # 5. Send the request to A1111 (Reactor args are passed in via 'alwayson_scripts')
     print("Sending request to A1111...")
+    if "alwayson_scripts" in inference_request:
+        print("Reactor (or other always-on script) detected in payload.")
+
     try:
         response = automatic_session.post(
-            url=f'{LOCAL_URL}/txt2img', 
-            json=inference_request, 
+            url=f'{LOCAL_URL}/txt2img',
+            json=inference_request,
             timeout=600
         )
-        
+
         if response.status_code != 200:
             error_msg = f"A1111 API Error: {response.status_code} - {response.text}"
             print(error_msg)
             return {"error": error_msg}
-        
+
         result = response.json()
         print("A1111 request completed successfully")
         return result
-        
+
     except Exception as e:
         error_msg = f"Error calling A1111 API: {str(e)}"
         print(error_msg)
