@@ -31,16 +31,17 @@ RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git /stabl
 WORKDIR /stable-diffusion-webui
 RUN git checkout v1.9.3
 
-# Install ControlNet extension first (before other dependencies)
-# Install ControlNet extension first (before other dependencies)
-# Install ControlNet extension first (before other dependencies)
+# --- CORREÇÃO: Instala a extensão Reactor PRIMEIRO ---
 RUN cd extensions && \
-    git clone https://github.com/Mikubill/sd-webui-controlnet.git && \
-    cd sd-webui-controlnet && \
-    git checkout -b temp 3571b1c
+    git clone https://github.com/Gourieff/sd-webui-reactor-sfw.git
 
-# Install Python dependencies for A1111 and our custom libs in a single layer
-RUN pip install --no-cache-dir \
+# --- CORREÇÃO: Instala as dependências do Reactor DEPOIS de clonar ---
+RUN cd extensions/sd-webui-reactor-sfw && \
+    pip install --no-cache-dir -r requirements.txt
+
+# --- CORREÇÃO: Força a reinstalação da biblioteca da GPU ---
+RUN pip uninstall -y onnxruntime onnxruntime-gpu && \
+    pip install --no-cache-dir \
     -r requirements_versions.txt \
     protobuf==3.20.3 \
     xformers==0.0.24 \
@@ -51,16 +52,11 @@ RUN pip install --no-cache-dir \
     opencv-python \
     albumentations==1.3.1
 
-# Install ControlNet requirements
-RUN cd extensions/sd-webui-controlnet && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Create model directories
+# --- CORREÇÃO: Remove criação de diretórios desnecessários ---
 RUN mkdir -p models/Stable-diffusion \
     models/Lora \
     embeddings \
-    models/ControlNet \
-    models/clip_vision
+    models/insightface
 
 # Download models
 WORKDIR /tmp
@@ -83,16 +79,9 @@ RUN wget -O /stable-diffusion-webui/embeddings/veryBadImageNegative_v1.3.pt \
 RUN wget -O /stable-diffusion-webui/embeddings/FastNegativeV2.pt \
     "https://huggingface.co/Fabricioi/modelorealista/resolve/main/FastNegativeV2.pt"
 
-# IP-Adapter models
-RUN wget -O /stable-diffusion-webui/models/ControlNet/ip-adapter_sdxl.safetensors \
-    "https://huggingface.co/h94/IP-Adapter/resolve/main/sdxl_models/ip-adapter_sdxl.safetensors"
-
-RUN wget -O /stable-diffusion-webui/models/ControlNet/ip-adapter_sdxl_vit-h.safetensors \
-    "https://huggingface.co/h94/IP-Adapter/resolve/main/sdxl_models/ip-adapter_sdxl_vit-h.safetensors"
-
-# CLIP Vision model
-RUN wget -O /stable-diffusion-webui/models/clip_vision/clip_vision_vit_h.safetensors \
-    "https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors"
+# Download Reactor's face swap model
+RUN wget -O /stable-diffusion-webui/models/insightface/inswapper_128.onnx \
+    "https://huggingface.co/Gourieff/ReActor/resolve/main/models/inswapper_128.onnx"
 
 # Pre-cache insightface models
 RUN python3 -c "import insightface; app = insightface.app.FaceAnalysis(name='buffalo_l'); app.prepare(ctx_id=0, det_size=(640, 640))"
