@@ -32,10 +32,11 @@ WORKDIR /stable-diffusion-webui
 RUN git checkout v1.9.3
 
 # Install ControlNet extension first (before other dependencies)
+# Install ControlNet extension first (before other dependencies)
 RUN cd extensions && \
     git clone https://github.com/Mikubill/sd-webui-controlnet.git && \
     cd sd-webui-controlnet && \
-    git checkout v1.1.455
+    git checkout 3571b1c
 
 # Install Python dependencies for A1111 and our custom libs in a single layer
 RUN pip install --no-cache-dir \
