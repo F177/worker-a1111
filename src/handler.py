@@ -13,11 +13,11 @@ import numpy as np
 import boto3
 import uuid
 import base64 
+import json
 
 # --- CONFIGURATION ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
 
-# Updated A1111 command with better flags for RunPod
 A1111_COMMAND = [
     "python", "/stable-diffusion-webui/webui.py",
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
@@ -46,16 +46,12 @@ def detect_and_save_faces(image_bytes):
         return []
         
     try:
-        # Decode image
         bgr_img = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
         if bgr_img is None:
             print("Error: could not decode image.")
             return []
 
-        # Convert BGR to RGB for face analysis
         rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
-
-        # Detect faces
         faces = face_analyzer.get(rgb_img)
         if not faces:
             print("No faces detected in image")
@@ -65,7 +61,6 @@ def detect_and_save_faces(image_bytes):
         for i, face in enumerate(faces):
             try:
                 bbox = face.bbox.astype(int)
-                # Add some padding to the bounding box
                 padding = 20
                 y1 = max(0, bbox[1] - padding)
                 y2 = min(bgr_img.shape[0], bbox[3] + padding)
@@ -73,16 +68,12 @@ def detect_and_save_faces(image_bytes):
                 x2 = min(bgr_img.shape[1], bbox[2] + padding)
                 
                 cropped_img = bgr_img[y1:y2, x1:x2]
-                
-                # Encode image
                 _, buffer = cv2.imencode('.png', cropped_img)
                 face_bytes = buffer.tobytes()
 
-                # Generate unique face ID
                 face_id = f"f-{uuid.uuid4()}"
                 s3_key = f"faces/{face_id}.png"
 
-                # Upload to S3
                 s3_client.put_object(
                     Bucket=S3_BUCKET_NAME, 
                     Key=s3_key, 
@@ -115,7 +106,6 @@ retries = Retry(total=10, backoff_factor=0.2, status_forcelist=[502, 503, 504])
 automatic_session.mount('http://', HTTPAdapter(max_retries=retries))
 
 def wait_for_service(url, max_wait=300):
-    """Waits for the A1111 service to be ready."""
     start_time = time.time()
     while not shutdown_flag.is_set() and (time.time() - start_time) < max_wait:
         try:
@@ -123,8 +113,7 @@ def wait_for_service(url, max_wait=300):
             if response.status_code == 200:
                 print("A1111 service is ready.")
                 return True
-        except requests.exceptions.RequestException as e:
-            print(f"Waiting for A1111 service... ({e})")
+        except requests.exceptions.RequestException:
             time.sleep(5)
         except Exception as e:
             print(f"Unexpected error while waiting for service: {e}")
@@ -133,99 +122,68 @@ def wait_for_service(url, max_wait=300):
     print(f"Service failed to start within {max_wait} seconds")
     return False
 
-def check_controlnet_available():
-    """Check if ControlNet extension is available."""
-    try:
-        response = automatic_session.get(f'{LOCAL_URL}/controlnet/version', timeout=10)
-        if response.status_code == 200:
-            version_info = response.json()
-            print(f"ControlNet version: {version_info}")
-            return True
-        else:
-            print(f"ControlNet not available: {response.status_code}")
-            return False
-    except Exception as e:
-        print(f"Error checking ControlNet: {e}")
-        return False
-
-def get_controlnet_models():
-    """Get available ControlNet models."""
-    try:
-        response = automatic_session.get(f'{LOCAL_URL}/controlnet/model_list', timeout=10)
-        if response.status_code == 200:
-            models = response.json()
-            print(f"Available ControlNet models: {models}")
-            return models
-        else:
-            print(f"Failed to get ControlNet models: {response.status_code}")
-            return []
-    except Exception as e:
-        print(f"Error getting ControlNet models: {e}")
-        return []
-
 def run_inference(inference_request):
     """
     Runs inference by passing the request directly to the A1111 API.
-    This function now correctly handles 'alwayson_scripts' like Reactor.
+    This function correctly handles 'alwayson_scripts' like ReActor.
     """
     print(f"Starting inference with keys: {list(inference_request.keys())}")
 
-    # 1. Apply LoRA to the positive prompt
+    # Apply LoRA to the positive prompt
     lora_level = inference_request.get("lora_level", 0.6)
     lora_prompt = f"<lora:epiCRealnessRC1:{lora_level}>"
     inference_request["prompt"] = f"{inference_request.get('prompt', '')}, {lora_prompt}"
-
-    # 2. Apply negative embeddings
+    
+    # Apply negative embeddings
     negative_embeddings = "veryBadImageNegative_v1.3, FastNegativeV2"
     inference_request["negative_prompt"] = f"{inference_request.get('negative_prompt', '')}, {negative_embeddings}"
 
-    # 3. Set base model and CLIP Skip via override_settings
+    # Set base model and CLIP Skip via override_settings
     override_settings = {
         "sd_model_checkpoint": "ultimaterealismo.safetensors",
         "CLIP_stop_at_last_layers": inference_request.get("clip_skip", 1)
     }
-
-    # 4. Add SDXL Refiner Logic if requested
-    if inference_request.get("use_refiner", False):
-        print("Refiner enabled for this request.")
-        inference_request["refiner_checkpoint"] = "sd_xl_refiner_1.0.safetensors"
-        inference_request["refiner_switch_at"] = inference_request.get("refiner_switch_at", 0.8)
-
+    
     if "override_settings" not in inference_request:
         inference_request["override_settings"] = {}
     inference_request["override_settings"].update(override_settings)
 
-    # 5. Send the request to A1111 (Reactor args are passed in via 'alwayson_scripts')
-    print("Sending request to A1111...")
+    # Send the request to A1111
     if "alwayson_scripts" in inference_request:
-        print("Reactor (or other always-on script) detected in payload.")
-
+        print("Faceswap/ReActor arguments detected in payload.")
+    
+    print("Sending request to A1111...")
     try:
         response = automatic_session.post(
-            url=f'{LOCAL_URL}/txt2img',
-            json=inference_request,
+            url=f'{LOCAL_URL}/txt2img', 
+            json=inference_request, 
             timeout=600
         )
-
-        if response.status_code != 200:
-            error_msg = f"A1111 API Error: {response.status_code} - {response.text}"
-            print(error_msg)
-            return {"error": error_msg}
-
+        response.raise_for_status() # Will raise an exception for 4xx/5xx status codes
+        
         result = response.json()
         print("A1111 request completed successfully")
-        return result
 
-    except Exception as e:
+        # Extract and parse the info string to include it in the final output
+        if 'info' in result:
+            try:
+                result['info'] = json.loads(result['info'])
+            except json.JSONDecodeError:
+                print(f"Warning: Could not parse A1111 info string: {result['info']}")
+        
+        return result
+        
+    except requests.exceptions.RequestException as e:
         error_msg = f"Error calling A1111 API: {str(e)}"
+        if e.response:
+            error_msg += f" - {e.response.text}"
         print(error_msg)
         return {"error": error_msg}
 
 # --- RUNPOD HANDLER ---
 def handler(event):
     """Main function called by RunPod to process a job."""
-    print(f"=== RunPod Job Started ===")
-    print(f"Event keys: {list(event.keys()) if event else 'None'}")
+    print(f"=== RunPod Job Started === | Event keys: {list(event.keys()) if event else 'None'}")
     
     try:
         if not event or "input" not in event:
@@ -234,82 +192,67 @@ def handler(event):
         input_data = event["input"]
         print(f"Input data keys: {list(input_data.keys())}")
         
-        print("Starting inference...")
+        # Check if this is a faceswap request
+        is_faceswap_job = "alwayson_scripts" in input_data and "reactor" in input_data["alwayson_scripts"]
+        
+        # Run inference
         json_output = run_inference(input_data)
         
         if "error" in json_output:
             print(f"Inference failed: {json_output['error']}")
             return json_output
         
-        if "ip_adapter_image_b64" not in input_data and "images" in json_output:
-            print("Running face detection on generated image...")
+        # If this was NOT a faceswap job, run face detection to find new faces.
+        # Otherwise, the face was already swapped, so we don't need to run detection again.
+        if not is_faceswap_job and "images" in json_output:
+            print("Standard generation complete. Running face detection to find usable faces...")
             try:
                 image_bytes = base64.b64decode(json_output['images'][0])
                 detected_faces = detect_and_save_faces(image_bytes)
                 json_output['detected_faces'] = detected_faces
                 print(f"Face detection completed. Found {len(detected_faces)} faces.")
             except Exception as e:
-                print(f"Face detection failed: {e}")
+                print(f"Face detection on generated image failed: {e}")
                 json_output['detected_faces'] = []
+        else:
+             print("Faceswap job complete. Skipping post-generation face detection.")
+             json_output['detected_faces'] = [] # Ensure the key exists
         
         print("=== RunPod Job Completed Successfully ===")
         return json_output
         
     except Exception as e:
         error_msg = f"Handler error: {str(e)}"
-        print(f"=== RunPod Job Failed ===")
-        print(error_msg)
+        print(f"=== RunPod Job Failed: {error_msg} ===")
         return {"error": error_msg}
     
-    finally:
-        print("Signaling worker shutdown...")
-        shutdown_flag.set()
-
 # --- MAIN ENTRY POINT ---
 if __name__ == "__main__":
     print("=== RunPod Worker Starting ===")
     
     try:
-        print("Starting A1111 server...")
         a1111_process = subprocess.Popen(
             A1111_COMMAND, 
-            preexec_fn=os.setsid,
             stdout=sys.stdout,
             stderr=sys.stderr
         )
         
-        print("Waiting for A1111 service to be ready...")
         if wait_for_service(url=f'{LOCAL_URL}/progress', max_wait=300):
-            print("A1111 service is ready!")
-            
-            print("Waiting for extensions to load...")
-            time.sleep(10)
-            
-            check_controlnet_available()
-            get_controlnet_models()
-            
-            print("Starting RunPod serverless handler...")
+            print("A1111 service and extensions are ready!")
             runpod.serverless.start({"handler": handler})
         else:
             print("Failed to start A1111 service")
+            if a1111_process:
+                a1111_process.terminate()
             sys.exit(1)
-
-        shutdown_flag.wait()
-        print("Shutdown signal received")
 
     except Exception as e:
         print(f"Fatal error in main process: {e}")
-        shutdown_flag.set()
-        sys.exit(1)
     
     finally:
         if a1111_process and a1111_process.poll() is None:
             print("Terminating A1111 process...")
-            try:
-                os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
-                a1111_process.wait(timeout=30)
-            except:
-                print("Force killing A1111 process...")
-                os.killpg(os.getpgid(a1111_process.pid), signal.SIGKILL)
+            a1111_process.terminate()
+            a1111_process.wait(timeout=30)
         
         print("=== RunPod Worker Shutdown Complete ===")
