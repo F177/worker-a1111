@@ -17,7 +17,7 @@ import base64
 # --- CONFIGURATION ---
 LOCAL_URL = "http://127.0.0.1:3000"
 
-# Updated A1111 command with better flags for RunPod
+# Updated A1111 command with better flags for RunPod.
 A1111_COMMAND = [
     "python", "/stable-diffusion-webui/webui.py",
     "--listen",
