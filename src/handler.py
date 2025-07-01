@@ -216,46 +216,50 @@ def handler(event):
         shutdown_flag.set()
 
 # --- MAIN ENTRY POINT ---
+# --- TEMPORARY DIAGNOSTIC CODE ---
 if __name__ == "__main__":
-    print("=== RunPod Worker Starting ===")
-    
+    print("=== Starting Diagnostic Mode ===")
+    a1111_process = None
     try:
-        print("Starting A1111 server...")
+        print("Starting A1111 server for diagnostic...")
         a1111_process = subprocess.Popen(
             A1111_COMMAND, 
             preexec_fn=os.setsid,
             stdout=sys.stdout,
             stderr=sys.stderr
         )
-        
-        # Wait for the base A1111 API to be ready
+
         print("Waiting for A1111 service to be ready...")
         if wait_for_service(url=f'{LOCAL_URL}/sdapi/v1/progress', max_wait=300):
-            print("A1111 service is ready!")
-            print("Starting RunPod serverless handler...")
-            runpod.serverless.start({"handler": handler})
-        else:
-            print("Failed to start A1111 service")
-            sys.exit(1)
+            print("A1111 service is ready. Querying for samplers...")
+            
+            # Query the samplers endpoint
+            samplers_url = f'{LOCAL_URL}/sdapi/v1/samplers'
+            response = requests.get(samplers_url, timeout=20)
+            response.raise_for_status()
+            samplers = response.json()
+            
+            print("\n\n" + "="*50)
+            print(">>> AVAILABLE SAMPLERS LIST <<<")
+            print(json.dumps(samplers, indent=2))
+            print("="*50 + "\n\n")
+            print("Diagnostic complete. Please copy the list above and send it back.")
 
-        # Wait for shutdown signal
-        shutdown_flag.wait()
-        print("Shutdown signal received")
+        else:
+            print("Failed to start A1111 service for diagnostic.")
 
     except Exception as e:
-        print(f"Fatal error in main process: {e}")
-        shutdown_flag.set()
-        sys.exit(1)
+        print(f"An error occurred during the diagnostic: {e}")
     
     finally:
-        # Clean shutdown
+        # Cleanly shutdown the A1111 server
         if a1111_process and a1111_process.poll() is None:
-            print("Terminating A1111 process...")
+            print("Shutting down A1111 server...")
             try:
                 os.killpg(os.getpgid(a1111_process.pid), signal.SIGTERM)
                 a1111_process.wait(timeout=30)
             except:
-                print("Force killing A1111 process...")
                 os.killpg(os.getpgid(a1111_process.pid), signal.SIGKILL)
         
-        print("=== RunPod Worker Shutdown Complete ===")
+        print("=== Exiting Diagnostic Mode ===")
+        sys.exit(0)
