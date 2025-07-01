@@ -82,7 +82,7 @@ RUN wget -O /stable-diffusion-webui/embeddings/FastNegativeV2.pt \
 # Download Reactor's face swap model
 # Download Reactor's face swap model
 RUN wget -O /stable-diffusion-webui/models/insightface/inswapper_128.onnx \
-    "https://github.com/facefusion/facefusion-assets/releases/download/models/inswapper_128.onnx"
+    "https://huggingface.co/Fabricioi/modelorealista/resolve/main/inswapper_128.onnx"
 
 # Pre-cache insightface models
 RUN python3 -c "import insightface; app = insightface.app.FaceAnalysis(name='buffalo_l'); app.prepare(ctx_id=0, det_size=(640, 640))"
