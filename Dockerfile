@@ -31,10 +31,11 @@ RUN git checkout v1.9.3
 
 # Install Python dependencies for A1111
 # Instala os requisitos do A1111, fixando a versão do protobuf
-RUN pip install --no-cache-dir -r requirements_versions.txt protobuf==3.20.3
+
 
 # Install additional dependencies
 # Install all Python dependencies in a single step to resolve conflicts
+# Install Python dependencies for A1111 and our custom libs in a single layer
 RUN pip install --no-cache-dir \
     -r requirements_versions.txt \
     protobuf==3.20.3 \
@@ -46,12 +47,10 @@ RUN pip install --no-cache-dir \
     opencv-python \
     albumentations==1.3.1
 
-# Install ControlNet extension with a valid, stable version tag
-# Install ControlNet extension with a VERIFIED, valid, stable version tag
+# Install ControlNet extension using the latest version
 RUN cd extensions && \
     git clone https://github.com/Mikubill/sd-webui-controlnet.git && \
     cd sd-webui-controlnet && \
-    git checkout v1.1.432 && \
     pip install --no-cache-dir -r requirements.txt
     
 # Create model directories
