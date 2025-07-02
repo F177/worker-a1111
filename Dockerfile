@@ -92,7 +92,8 @@ RUN wget -O /stable-diffusion-webui/models/insightface/inswapper_128.onnx \
     "https://huggingface.co/Fabricioi/modelorealista/resolve/main/inswapper_128.onnx"
 
 # Pre-cache insightface models
-RUN python3 -c "import insightface; app = insightface.app.FaceAnalysis(name='buffalo_l'); app.prepare(ctx_id=0, det_size=(640, 640))"
+# Pre-cache insightface models
+RUN OMP_NUM_THREADS=1 OMP_WAIT_POLICY=PASSIVE python3 -c "import insightface; app = insightface.app.FaceAnalysis(name='buffalo_l'); app.prepare(ctx_id=0, det_size=(640, 640))"
 
 # Pre-initialize A1111 (downloads additional dependencies)
 WORKDIR /stable-diffusion-webui
