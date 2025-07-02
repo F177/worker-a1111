@@ -10,14 +10,7 @@ WORKDIR /
 
 # Install system dependencies including cuDNN
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    gnupg && \
-    curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.0-1_all.deb -o /tmp/cuda-keyring.deb && \
-    dpkg -i /tmp/cuda-keyring.deb && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-    libcudnn9 \
+    libcudnn9-cuda-12 \
     wget \
     git \
     python3 \
@@ -30,8 +23,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libgoogle-perftools4 \
     libtcmalloc-minimal4 \
-    && rm -f /tmp/cuda-keyring.deb \
     && rm -rf /var/lib/apt/lists/*
+
 
 # Clone Stable Diffusion WebUI
 RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git /stable-diffusion-webui
