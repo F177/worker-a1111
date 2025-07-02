@@ -40,7 +40,7 @@ RUN cd extensions/sd-webui-reactor && \
     pip install --no-cache-dir -r requirements.txt
 
 # --- CORREÇÃO: Força a reinstalação da biblioteca da GPU ---
-RUN pip uninstall -y onnxruntime onnxruntime-gpu && \
+RUN pip uninstall -y onnxruntime-gpu && \
     pip install --no-cache-dir \
     -r requirements_versions.txt \
     protobuf==3.20.3 \
