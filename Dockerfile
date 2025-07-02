@@ -22,9 +22,16 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     libgoogle-perftools4 \
     libtcmalloc-minimal4 \
-    libcudnn9 \
-    libcudnn9-dev \
     && rm -rf /var/lib/apt/lists/*
+
+RUN wget https://developer.download.nvidia.com/compute/cudnn/9.10.2/local_installers/cudnn-local-repo-ubuntu2204-9.10.2_1.0-1_amd64.deb && \
+    dpkg -i cudnn-local-repo-ubuntu2204-9.10.2_1.0-1_amd64.deb && \
+    cp /var/cudnn-local-repo-ubuntu2204-9.10.2/cudnn-*-keyring.gpg /usr/share/keyrings/ && \
+    apt-get update && \
+    apt-get install -y cudnn-cuda-12 && \
+    ldconfig && \
+    rm cudnn-local-repo-ubuntu2204-9.10.2_1.0-1_amd64.deb && \
+    rm -rf /var/lib/apt/lists/*
 
 # Clone Stable Diffusion WebUI
 RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git /stable-diffusion-webui
