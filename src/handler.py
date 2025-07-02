@@ -18,11 +18,21 @@ import json
 # --- CONFIGURATION ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
 A1111_COMMAND = [
-    "python", "/stable-diffusion-webui/webui.py", "--xformers", "--no-half-vae", 
-    "--api", "--nowebui", "--port", "3000", "--skip-version-check", 
-    "--disable-safe-unpickle", "--no-hashing", "--opt-sdp-attention", 
-    "--no-download-sd-model", "--enable-insecure-extension-access",
-    "--api-log", "--cors-allow-origins=*"
+    "python", "/stable-diffusion-webui/webui.py",
+    "--medvram",                # <-- ADICIONE ESTA LINHA
+    "--xformers",
+    "--no-half-vae",
+    "--api",
+    "--nowebui",
+    "--port", "3000",
+    "--skip-version-check",
+    "--disable-safe-unpickle",
+    "--no-hashing",
+    "--opt-sdp-attention",
+    "--no-download-sd-model",
+    "--enable-insecure-extension-access",
+    "--api-log",
+    "--cors-allow-origins=*"
 ]
 S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
 
