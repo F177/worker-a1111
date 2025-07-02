@@ -36,7 +36,7 @@ RUN cd extensions && \
     git clone https://codeberg.org/Gourieff/sd-webui-reactor.git
 
 # --- CORREÇÃO: Instala as dependências do Reactor DEPOIS de clonar ---
-RUN cd extensions/sd-webui-reactor-sfw && \
+RUN cd extensions/sd-webui-reactor && \
     pip install --no-cache-dir -r requirements.txt
 
 # --- CORREÇÃO: Força a reinstalação da biblioteca da GPU ---
