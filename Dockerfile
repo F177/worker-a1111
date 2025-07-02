@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     libgoogle-perftools4 \
     libtcmalloc-minimal4 \
+    libcudnn9 \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone Stable Diffusion WebUI
