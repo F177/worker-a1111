@@ -18,23 +18,43 @@ import json
 # --- CONFIGURATION ---
 LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
 A1111_COMMAND = [
-    "python", "/stable-diffusion-webui/webui.py",
-    "--medvram",                # <-- ADICIONE ESTA LINHA
-    "--xformers",
-    "--no-half-vae",
-    "--api",
-    "--nowebui",
-    "--port", "3000",
-    "--skip-version-check",
-    "--disable-safe-unpickle",
-    "--no-hashing",
-    "--opt-sdp-attention",
-    "--no-download-sd-model",
-    "--enable-insecure-extension-access",
-    "--api-log",
-    "--cors-allow-origins=*"
+    "python", "/stable-diffusion-webui/webui.py", "--xformers", "--no-half-vae", 
+    "--api", "--nowebui", "--port", "3000", "--skip-version-check", 
+    "--disable-safe-unpickle", "--no-hashing", "--opt-sdp-attention", 
+    "--no-download-sd-model", "--enable-insecure-extension-access",
+    "--api-log", "--cors-allow-origins=*"
 ]
 S3_BUCKET_NAME = os.environ.get('S3_BUCKET_NAME')
+
+def set_rector_device(device_str):
+    """
+    Força a extensão ReActor a usar um dispositivo específico (CUDA)
+    modificando o arquivo de configuração dela em tempo de execução.
+    """
+    try:
+        reactor_helpers_path = "/stable-diffusion-webui/extensions/sd-webui-reactor/scripts/reactor_helpers.py"
+        with open(reactor_helpers_path, "r") as f:
+            lines = f.readlines()
+
+        new_lines = []
+        in_set_device_func = False
+        device_already_set = any("DEVICE = " in line for line in lines if "def set_Device" in line or in_set_device_func)
+
+        if not device_already_set:
+            for line in lines:
+                new_lines.append(line)
+                if "def set_Device(DEVICE):" in line:
+                    new_lines.append(f"    DEVICE = '{device_str}'\n")
+            
+            with open(reactor_helpers_path, "w") as f:
+                f.writelines(new_lines)
+            
+            print(f"ReActor device explicitly set to {device_str}")
+        else:
+            print("ReActor device override already seems to be in place.")
+            
+    except Exception as e:
+        print(f"Could not force ReActor device: {e}")
 
 # --- INITIALIZATION ---
 s3_client = boto3.client('s3')
@@ -132,6 +152,7 @@ def handler(event):
 
 # --- MAIN ENTRY POINT ---
 if __name__ == "__main__":
+    set_rector_device("CUDA")
     print("=== Starting RunPod Worker ===")
     a1111_process = subprocess.Popen(A1111_COMMAND, stdout=sys.stdout, stderr=sys.stderr)
     if wait_for_service(url=f'{LOCAL_URL}/progress'):
