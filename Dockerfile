@@ -33,7 +33,7 @@ RUN git checkout v1.9.3
 
 # --- CORREÇÃO: Instala a extensão Reactor PRIMEIRO ---
 RUN cd extensions && \
-    git clone https://codeberg.org/Gourieff/comfyui-reactor-node.git
+    git clone https://codeberg.org/Gourieff/sd-webui-reactor.git
 
 # --- CORREÇÃO: Instala as dependências do Reactor DEPOIS de clonar ---
 RUN cd extensions/sd-webui-reactor-sfw && \
