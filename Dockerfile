@@ -46,7 +46,7 @@ RUN pip uninstall -y onnxruntime onnxruntime-gpu && \
     protobuf==3.20.3 \
     xformers==0.0.24 \
     insightface==0.7.3 \
-    onnxruntime-gpu==1.20.0 \
+    onnxruntime-gpu==1.16.3 \
     runpod \
     boto3 \
     opencv-python \
