@@ -36,7 +36,8 @@
     RUN cd extensions && \
         git clone https://codeberg.org/Gourieff/sd-webui-reactor.git
 
-
+    RUN mkdir -p repositories
+    RUN git clone https://github.com/Stability-AI/stablediffusion.git repositories/stable-diffusion-stability-ai
 
     # Instala as dependências do ReActor
     RUN cd extensions/sd-webui-reactor && \
