@@ -5,7 +5,7 @@ FROM runpod/pytorch:2.2.0-py3.10-cuda12.1.1-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV ROOT=/stable-diffusion-webui
-# CORREÇÃO: Adicionada de volta para evitar crash do insightface durante o build
+# CORREÇÃO: Adicionada para evitar crash do insightface durante o build
 ENV OMP_NUM_THREADS=1
 
 WORKDIR /
@@ -41,7 +41,7 @@ RUN cd extensions && \
 RUN cd extensions/sd-webui-reactor && \
     pip install --no-cache-dir -r requirements.txt
 
-# CORREÇÃO: Força a reinstalação das bibliotecas de GPU com as versões corretas
+# Força a reinstalação das bibliotecas de GPU com as versões corretas
 RUN pip uninstall -y onnxruntime onnxruntime-gpu && \
     pip install --no-cache-dir \
     -r requirements_versions.txt \
