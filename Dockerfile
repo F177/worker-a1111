@@ -89,7 +89,12 @@
 
     # Pré-inicializa o A1111 (baixa dependências adicionais)
     WORKDIR /stable-diffusion-webui
-    RUN python3 -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
+    # ----------------- USE THIS CORRECTED COMMAND IN YOUR DOCKERFILE -----------------
+
+# Patch reactor_faceswap.py to accept Base64 images from the API
+RUN sed -i "/^    def process(/a\        if isinstance(img, str) and 'base64,' in img:\n            try:\n                from modules.api.api import decode_base64_to_image\n                img = decode_base64_to_image(img)\n                print('-- REACTOR: Successfully decoded base64 image from API')\n            except Exception as e:\n                print(f'-- REACTOR: Could not decode base64 image: {e}')\n                img = None" /stable-diffusion-webui/extensions/sd-webui-reactor/scripts/reactor_faceswap.py
+
+# --------------------------------------------------------------------------------
 
     # Copia os arquivos da aplicação
     WORKDIR /
