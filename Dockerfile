@@ -84,8 +84,6 @@
     RUN wget -O /stable-diffusion-webui/models/insightface/inswapper_128.onnx \
         "https://huggingface.co/Fabricioi/modelorealista/resolve/main/inswapper_128.onnx"
 
-    # Pré-carrega os modelos do insightface para evitar downloads no primeiro uso
-    RUN python3 -c "import insightface; app = insightface.app.FaceAnalysis(name='buffalo_l'); app.prepare(ctx_id=0, det_size=(640, 640))"
 
     # Pré-inicializa o A1111 (baixa dependências adicionais)
     WORKDIR /stable-diffusion-webui
