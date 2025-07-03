@@ -36,12 +36,7 @@
     RUN cd extensions && \
         git clone https://codeberg.org/Gourieff/sd-webui-reactor.git
 
-    # ----------------- ADD THIS COMMAND TO YOUR DOCKERFILE -----------------
 
-# Patch reactor_faceswap.py to accept Base64 images from the API
-    RUN sed -i "/def process(/a \        if isinstance(img, str) and 'base64,' in img:\n            from modules.api.api import decode_base64_to_image\n            img = decode_base64_to_image(img)\n" /stable-diffusion-webui/extensions/sd-webui-reactor/scripts/reactor_faceswap.py
-
-# -------------------------------------------------------------------------
 
     # Instala as dependências do ReActor
     RUN cd extensions/sd-webui-reactor && \
