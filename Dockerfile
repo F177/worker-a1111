@@ -5,10 +5,12 @@ FROM runpod/pytorch:2.2.0-py3.10-cuda12.1.1-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV ROOT=/stable-diffusion-webui
+# CORREÇÃO: Adicionada para evitar crash do insightface durante o build
+ENV OMP_NUM_THREADS=1
 
 WORKDIR /
 
-# Install system dependencies including cuDNN
+# Install system dependencies including the correct cuDNN for CUDA 12
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcudnn9-cuda-12 \
     wget \
@@ -31,18 +33,15 @@ RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git /stabl
 WORKDIR /stable-diffusion-webui
 RUN git checkout v1.9.3
 
-# --- CORREÇÃO: Instala a extensão Reactor PRIMEIRO ---
+# Instala a extensão ReActor
 RUN cd extensions && \
     git clone https://codeberg.org/Gourieff/sd-webui-reactor.git
 
-RUN sed -i "/self.source = img/a \        print(f'--- REACTOR DEBUG: Source Image Type: {type(self.source)}')\n        if hasattr(self.source, 'size'): print(f'--- REACTOR DEBUG: Source Image Size: {self.source.size}')\n        print(f'--- REACTOR DEBUG: Model: {self.model}')" \
-    /stable-diffusion-webui/extensions/sd-webui-reactor/scripts/reactor_faceswap.py
-
-# --- CORREÇÃO: Instala as dependências do Reactor DEPOIS de clonar ---
+# Instala as dependências do ReActor
 RUN cd extensions/sd-webui-reactor && \
     pip install --no-cache-dir -r requirements.txt
 
-# --- CORREÇÃO: Força a reinstalação da biblioteca da GPU ---
+# CORREÇÃO: Força a reinstalação das bibliotecas de GPU com as versões corretas
 RUN pip uninstall -y onnxruntime onnxruntime-gpu && \
     pip install --no-cache-dir \
     -r requirements_versions.txt \
@@ -55,16 +54,16 @@ RUN pip uninstall -y onnxruntime onnxruntime-gpu && \
     opencv-python \
     albumentations==1.3.1
 
-# --- CORREÇÃO: Remove criação de diretórios desnecessários ---
+# Cria os diretórios para os modelos
 RUN mkdir -p models/Stable-diffusion \
     models/Lora \
     embeddings \
     models/insightface
 
-# Download models
+# Baixa os modelos
 WORKDIR /tmp
 
-# Main models
+# Modelos principais
 RUN wget -O /stable-diffusion-webui/models/Stable-diffusion/ultimaterealismo.safetensors \
     "https://huggingface.co/Fabricioi/modelorealista/resolve/main/epicrealismXL_vxviiCrystalclear.safetensors"
 
@@ -75,32 +74,31 @@ RUN wget -O /stable-diffusion-webui/models/Stable-diffusion/sd_xl_refiner_1.0.sa
 RUN wget -O /stable-diffusion-webui/models/Lora/epiCRealnessRC1.safetensors \
     "https://huggingface.co/Fabricioi/modelorealista/resolve/main/epiCRealnessRC1.safetensors"
 
-# Negative embeddings
+# Embeddings Negativos
 RUN wget -O /stable-diffusion-webui/embeddings/veryBadImageNegative_v1.3.pt \
     "https://huggingface.co/Fabricioi/modelorealista/resolve/main/verybadimagenegative_v1.3.pt"
 
 RUN wget -O /stable-diffusion-webui/embeddings/FastNegativeV2.pt \
     "https://huggingface.co/Fabricioi/modelorealista/resolve/main/FastNegativeV2.pt"
 
-# Download Reactor's face swap model
-# Download Reactor's face swap model
+# Baixa o modelo de faceswap do Reactor
 RUN wget -O /stable-diffusion-webui/models/insightface/inswapper_128.onnx \
     "https://huggingface.co/Fabricioi/modelorealista/resolve/main/inswapper_128.onnx"
 
-# Pre-cache insightface models
+# Pré-carrega os modelos do insightface para evitar downloads no primeiro uso
 RUN python3 -c "import insightface; app = insightface.app.FaceAnalysis(name='buffalo_l'); app.prepare(ctx_id=0, det_size=(640, 640))"
 
-# Pre-initialize A1111 (downloads additional dependencies)
+# Pré-inicializa o A1111 (baixa dependências adicionais)
 WORKDIR /stable-diffusion-webui
 RUN python3 -c "from launch import prepare_environment; prepare_environment()" --skip-torch-cuda-test
 
-# Copy application files
+# Copia os arquivos da aplicação
 WORKDIR /
 COPY handler.py /handler.py
 COPY start.sh /start.sh
 
-# Make start script executable
+# Torna o script de início executável
 RUN chmod +x /start.sh
 
-# Set the default command
+# Define o comando padrão
 CMD ["/start.sh"]
