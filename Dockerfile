@@ -66,7 +66,7 @@ RUN mkdir -p \
 # Baixa todos os modelos e dependências em uma única camada para otimizar o build
 RUN \
     # Modelos Principais
-    wget -O /stable-diffusion-webui/models/Stable-diffusion/ultimaterealismo.safetensors "https://huggingface.co/Fabricioi/modelorealista/resolve/main/epicrealismXL_vxviiCrystalclear.safetensors" && \
+    wget -O /stable-diffusion-webui/models/Stable-diffusion/ultimaterealismo.safetensors "https://huggingface.co/Fabricioi/modelorealista/resolve/main/superrealismo2.safetensors" && \
     wget -O /stable-diffusion-webui/models/Stable-diffusion/sd_xl_refiner_1.0.safetensors "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/resolve/main/sd_xl_refiner_1.0.safetensors" && \
     \
     # LoRA e Embeddings
