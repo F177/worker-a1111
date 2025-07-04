@@ -17,7 +17,7 @@ import json
 import traceback
 
 # --- CONFIGURATION ---
-LOCAL_URL = "http://127.0.0.1:3000/sdapi/v1"
+LOCAL_URL = "http://127.0.0.1:3000" # Base URL for A1111
 A1111_COMMAND = [
     "python", "/stable-diffusion-webui/webui.py",
     "--xformers", "--no-half-vae", "--api", "--nowebui", "--port", "3000",
@@ -40,17 +40,15 @@ except Exception as e:
     print(f"Warning: Face analyzer initialization failed: {e}")
 
 def detect_and_save_faces(image_bytes):
+    # This function remains the same and is used for non-faceswap jobs
     if not face_analyzer or not S3_FACES_BUCKET_NAME:
-        print("Face analyzer or S3_FACES_BUCKET_NAME not available, skipping face detection.")
         return []
     try:
         bgr_img = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
         if bgr_img is None: return []
-        
         rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
         faces = face_analyzer.get(rgb_img)
         if not faces: return []
-
         detected_faces = []
         for i, face in enumerate(faces):
             try:
@@ -58,21 +56,15 @@ def detect_and_save_faces(image_bytes):
                 padding = 20
                 y1, y2 = max(0, bbox[1] - padding), min(bgr_img.shape[0], bbox[3] + padding)
                 x1, x2 = max(0, bbox[0] - padding), min(bgr_img.shape[1], bbox[2] + padding)
-                
                 cropped_img = bgr_img[y1:y2, x1:x2]
                 _, buffer = cv2.imencode('.png', cropped_img)
-                
                 face_id = f"f-{uuid.uuid4()}"
                 s3_key = f"faces/{face_id}.png"
-
                 s3_client.put_object(
-                    Bucket=S3_FACES_BUCKET_NAME, 
-                    Key=s3_key, 
-                    Body=buffer.tobytes(), 
-                    ContentType='image/png'
+                    Bucket=S3_FACES_BUCKET_NAME, Key=s3_key, 
+                    Body=buffer.tobytes(), ContentType='image/png'
                 )
                 detected_faces.append({"face_id": face_id, "face_index": i, "bbox": bbox.tolist()})
-                print(f"Saved face {i} as {face_id}")
             except Exception as e:
                 print(f"Error processing face {i}: {e}")
         return detected_faces
@@ -99,101 +91,76 @@ def wait_for_service(url, max_wait=300):
     print(f"Service failed to start within {max_wait} seconds")
     return False
 
-# <<< CORREÇÃO AQUI >>>
-def check_reactor_availability():
-    """Check if ReActor extension is available by checking the script list."""
-    try:
-        response = requests.get(f'{LOCAL_URL}/scripts', timeout=10)
-        if response.status_code == 200:
-            scripts_data = response.json()
-            # The API returns a list of script filenames for txt2img and img2img
-            txt2img_scripts = scripts_data.get('txt2img', [])
-            # The script filename for ReActor is 'reactor_faceswap.py'
-            reactor_available = "reactor_faceswap.py" in txt2img_scripts
-            print(f"ReActor extension available: {reactor_available}")
-            return reactor_available
-        else:
-            print(f"Failed to check for available scripts: {response.status_code}")
-            return False
-    except Exception as e:
-        print(f"Error checking ReActor availability: {e}")
-        return False
-
+# <<< NEW, ROBUST run_inference FUNCTION >>>
 def run_inference(inference_request):
-    """ Correctly prepares and sends a request for faceswapping or standard generation. """
-    print("Preparing inference payload...")
-    if "alwayson_scripts" not in inference_request:
-        inference_request["alwayson_scripts"] = {}
-
-    # Handle faceswap via ReActor
-    if 'source_face_b64' in inference_request and inference_request['source_face_b64']:
-        print("Source face detected. Configuring ReActor for faceswap.")
-        
-        # Full argument list for ReActor based on its script definition
-        reactor_args = [
-            inference_request.get('source_face_b64'),  # 1. img
-            True,                                      # 2. enable
-            '0',                                       # 3. source_faces_index
-            '0',                                       # 4. faces_index
-            'inswapper_128.onnx',                      # 5. model
-            'CodeFormer',                              # 6. face_restorer_name
-            1,                                         # 7. face_restorer_visibility
-            False,                                     # 8. restore_first
-            'None',                                    # 9. upscaler_name
-            1,                                         # 10. upscaler_scale
-            1,                                         # 11. upscaler_visibility
-            False,                                     # 12. swap_in_source
-            True,                                      # 13. swap_in_generated
-            1,                                         # 14. console_logging_level
-            0,                                         # 15. gender_source
-            0,                                         # 16. gender_target
-            False,                                     # 17. save_original
-            inference_request.get('face_strength', 0.8),# 18. codeformer_weight
-            True,                                      # 19. source_hash_check
-            False,                                     # 20. target_hash_check
-            'CUDA',                                    # 21. device
-            False,                                     # 22. mask_face
-            0,                                         # 23. select_source
-            'None',                                    # 24. face_model
-            '',                                        # 25. source_folder
-            None,                                      # 26. imgs
-            False,                                     # 27. random_image
-            False,                                     # 28. upscale_force
-            0.6,                                       # 29. det_thresh
-            0,                                         # 30. det_maxnum
-            'tab_single',                              # 31. selected_tab
-        ]
-        inference_request["alwayson_scripts"]["reactor"] = {"args": reactor_args}
-        
-        # Clean up the original fields after adding them to the script args
-        del inference_request['source_face_b64']
-        if 'face_strength' in inference_request:
-            del inference_request['face_strength']
+    """
+    Handles image generation and faceswapping using the more reliable
+    External ReActor API endpoint.
+    """
+    is_faceswap = 'source_face_b64' in inference_request and inference_request['source_face_b64']
     
-    # Send the request to A1111
-    print("Sending request to A1111 API...")
+    # Step 1: Generate the base image
+    print("Step 1: Generating base image via /txt2img...")
+    # Remove faceswap-specific fields before sending to txt2img
+    source_face_b64 = inference_request.pop('source_face_b64', None)
+    face_strength = inference_request.pop('face_strength', 0.8)
+
     try:
-        response = automatic_session.post(f'{LOCAL_URL}/txt2img', json=inference_request, timeout=600)
-        print(f"A1111 API response status: {response.status_code}")
-        
-        if response.status_code != 200:
-            print(f"A1111 API error response: {response.text}")
-        
-        response.raise_for_status()
-        return response.json()
+        response_txt2img = automatic_session.post(f'{LOCAL_URL}/sdapi/v1/txt2img', json=inference_request, timeout=600)
+        response_txt2img.raise_for_status()
+        result_txt2img = response_txt2img.json()
+        print("Base image generated successfully.")
     except requests.exceptions.RequestException as e:
-        print(f"Error calling A1111 API: {e}")
-        return {"error": str(e)}
+        print(f"Error calling /txt2img API: {e}")
+        return {"error": f"Error generating base image: {str(e)}"}
+
+    if not result_txt2img.get("images"):
+        return {"error": "Base image generation failed, no images returned."}
+        
+    # If it's not a faceswap job, we are done.
+    if not is_faceswap:
+        return result_txt2img
+
+    # Step 2: Perform the faceswap using the External ReActor API
+    print("Step 2: Performing faceswap via /reactor/image...")
+    target_image_b64 = result_txt2img["images"][0]
+    
+    reactor_payload = {
+        "source_image": source_face_b64,
+        "target_image": target_image_b64,
+        "source_faces_index": [0],
+        "face_index": [0],
+        "upscaler": "None",
+        "scale": 1,
+        "upscale_visibility": 1,
+        "face_restorer": "CodeFormer",
+        "restorer_visibility": face_strength,
+        "restore_first": True,
+        "model": "inswapper_128.onnx",
+        "device": "CPU" # Matches the device ReActor is running on
+    }
+
+    try:
+        response_reactor = automatic_session.post(f'{LOCAL_URL}/reactor/image', json=reactor_payload, timeout=300)
+        response_reactor.raise_for_status()
+        result_reactor = response_reactor.json()
+        print("Faceswap completed successfully.")
+        
+        # Replace the original image with the faceswapped one to maintain a consistent output format
+        result_txt2img["images"] = [result_reactor.get("image")]
+        return result_txt2img
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error calling /reactor/image API: {e}")
+        return {"error": f"Error during faceswap: {str(e)}"}
 
 def handler(event):
     """ Main RunPod handler function. """
     print("=== RunPod Job Started ===")
     try:
         input_data = event["input"]
-        print(f"Input data keys: {list(input_data.keys())}")
-        
-        original_input = input_data.copy()
-        is_faceswap = 'source_face_b64' in original_input and original_input['source_face_b64']
+        is_faceswap = 'source_face_b64' in input_data and input_data.get('source_face_b64')
+
         print(f"Is faceswap request: {is_faceswap}")
 
         json_output = run_inference(input_data)
@@ -201,13 +168,14 @@ def handler(event):
         if "error" in json_output:
             return json_output
         
+        # We only run face detection if it was NOT a faceswap job
         if not is_faceswap and "images" in json_output:
             print("Running face detection on generated image...")
             image_bytes = base64.b64decode(json_output['images'][0])
             detected_faces = detect_and_save_faces(image_bytes)
             json_output['detected_faces'] = detected_faces
         else:
-            print("Skipping face detection because a faceswap was performed or no image was generated.")
+            print("Skipping face detection because a faceswap was performed.")
         
         print("=== RunPod Job Completed Successfully ===")
         return json_output
@@ -223,7 +191,7 @@ if __name__ == "__main__":
     print("=== RunPod Worker Starting ===")
     a1111_process = subprocess.Popen(A1111_COMMAND, preexec_fn=os.setsid, stdout=sys.stdout, stderr=sys.stderr)
     
-    if wait_for_service(url=f'{LOCAL_URL}/progress'):
+    if wait_for_service(url=f'{LOCAL_URL}/sdapi/v1/progress'):
         print("Starting RunPod serverless handler...")
         runpod.serverless.start({"handler": handler})
     else:
