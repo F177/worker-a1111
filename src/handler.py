@@ -3,6 +3,7 @@ import runpod
 import requests
 import subprocess
 import os
+import jason
 import signal
 import sys
 import threading
@@ -97,19 +98,20 @@ def wait_for_service(url, max_wait=300):
     return False
 
 def run_inference(inference_request):
-    """Runs inference with the provided payload."""
+    """Runs inference with the complete and correct ReActor argument list."""
     print(f"Starting inference with keys: {list(inference_request.keys())}")
 
-    # Initialize alwayson_scripts if not present
     if "alwayson_scripts" not in inference_request:
         inference_request["alwayson_scripts"] = {}
 
-    # Standard settings (LoRA, negative prompts, etc.)
+    # Standard settings
     lora_level = inference_request.get("lora_level", 0.6)
     lora_prompt = f"<lora:epiCRealnessRC1:{lora_level}>"
     inference_request["prompt"] = f"{inference_request.get('prompt', '')}, {lora_prompt}"
+    
     negative_embeddings = "veryBadImageNegative_v1.3, FastNegativeV2"
     inference_request["negative_prompt"] = f"{inference_request.get('negative_prompt', '')}, {negative_embeddings}"
+
     override_settings = {
         "sd_model_checkpoint": "ultimaterealismo.safetensors",
         "CLIP_stop_at_last_layers": inference_request.get("clip_skip", 1)
@@ -118,37 +120,53 @@ def run_inference(inference_request):
         inference_request["override_settings"] = {}
     inference_request["override_settings"].update(override_settings)
 
-    # <<< CORREÇÃO AQUI: Lógica correta para o ReActor >>>
+    # --- Correct ReActor Face Swap Logic ---
     if 'source_face_b64' in inference_request and inference_request['source_face_b64']:
-        print("Source face detected. Setting up ReActor for faceswap.")
+        print("Source face detected. Setting up ReActor with FULL argument list.")
         
-        # <<< CORREÇÃO AQUI: Lista de argumentos na ordem correta >>>
+        # This is the full list of 31 arguments in the correct order, based on reactor_faceswap.py
         reactor_args = [
-            inference_request['source_face_b64'],
-            True,                                  # Enable ReActor
-            "0",                                   # Source Face Index
-            "0",                                   # Target Face Index (0=all)
-            "inswapper_128.onnx",                  # Model
-            "CodeFormer",                          # Restore Face option
-            1,                                     # Restore Face Visibility
-            True,                                  # Postprocessing Order
-            None, None,                            # Upscalers
-            1, 1,                                  # Upscaler Scale and Visibility
-            False,                                 # Swap in source image
-            True,                                  # Save Original
-            inference_request.get('face_strength', 0.8), # CodeFormer Weight (Fidelity)
-            True,                                  # Source Hash Check
-            "CUDA",                                # Processing Device
-            0, 1, 0.25, 0, True, True, "None", "", # Mask options
+            inference_request.get('source_face_b64'),   # 1. img
+            True,                                       # 2. enable
+            '0',                                        # 3. source_faces_index
+            '0',                                        # 4. faces_index
+            'inswapper_128.onnx',                       # 5. model
+            'CodeFormer',                               # 6. face_restorer_name
+            1,                                          # 7. face_restorer_visibility
+            False,                                      # 8. restore_first
+            'None',                                     # 9. upscaler_name
+            1,                                          # 10. upscaler_scale
+            1,                                          # 11. upscaler_visibility
+            False,                                      # 12. swap_in_source
+            True,                                       # 13. swap_in_generated
+            1,                                          # 14. console_logging_level
+            0,                                          # 15. gender_source
+            0,                                          # 16. gender_target
+            False,                                      # 17. save_original
+            inference_request.get('face_strength', 0.8),# 18. codeformer_weight
+            True,                                       # 19. source_hash_check
+            False,                                      # 20. target_hash_check
+            'CUDA',                                     # 21. device
+            False,                                      # 22. mask_face
+            0,                                          # 23. select_source
+            'None',                                     # 24. face_model
+            '',                                         # 25. source_folder
+            None,                                       # 26. imgs
+            False,                                      # 27. random_image
+            False,                                      # 28. upscale_force
+            0.6,                                        # 29. det_thresh
+            0,                                          # 30. det_maxnum
+            'tab_single',                               # 31. selected_tab
         ]
 
-        # <<< CORREÇÃO AQUI: Nome do script em minúsculas ("reactor") >>>
         inference_request["alwayson_scripts"]["reactor"] = {"args": reactor_args}
 
+        # Clean up the payload
         del inference_request['source_face_b64']
         if 'face_strength' in inference_request:
             del inference_request['face_strength']
             
+    # print(json.dumps(inference_request, indent=2)) # Optional: Uncomment to debug the final payload
     print("Sending request to A1111...")
     try:
         response = automatic_session.post(
