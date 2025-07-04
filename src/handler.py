@@ -99,7 +99,7 @@ def run_inference(inference_request):
     """
     is_faceswap = 'source_face_b64' in inference_request and inference_request['source_face_b64']
     
-    # Step 1: Generate the base image
+    # Step 1: Generate the base image.
     print("Step 1: Generating base image via /txt2img...")
     # Remove faceswap-specific fields before sending to txt2img
     source_face_b64 = inference_request.pop('source_face_b64', None)
