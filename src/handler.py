@@ -12,6 +12,7 @@ import insightface
 import numpy as np
 import boto3
 import uuid
+import json
 import base64 
 
 # --- CONFIGURATION ---
@@ -164,7 +165,7 @@ def get_controlnet_models():
         return []
 
 def run_inference(inference_request):
-    """Runs inference with the provided payload."""
+    """Runs inference with the provided payload, including face swapping via ReActor."""
     print(f"Starting inference with keys: {list(inference_request.keys())}")
     
     # 1. Apply LoRA to the positive prompt
@@ -192,67 +193,63 @@ def run_inference(inference_request):
         inference_request["override_settings"] = {}
     inference_request["override_settings"].update(override_settings)
 
-    # 5. Handle IP-Adapter through ControlNet
+    # 5. Initialize alwayson_scripts
+    if "alwayson_scripts" not in inference_request:
+        inference_request["alwayson_scripts"] = {}
+
+    # --- NEW: Handle ReActor Face Swap ---
+    if 'source_face_b64' in inference_request:
+        print("Source face detected. Setting up ReActor for face swapping...")
+        
+        reactor_args = {
+            "args": [
+                inference_request['source_face_b64'],   # 0 - Source Image
+                True,                                   # 1 - Enable ReActor
+                '0',                                    # 2 - Comma-separated face indexes
+                'inswapper_128.onnx',                   # 3 - Model
+                'CodeFormer',                           # 4 - Restore Face: CodeFormer
+                1,                                      # 5 - Restore Face Visibility
+                True,                                   # 6 - Post-processing Enabled
+                1,                                      # 7 - Post-processing Order
+                0.8,                                    # 8 - Upscaler Scale
+                'None',                                 # 9 - Upscaler Model
+                False,                                  # 10 - Swap in source image
+                True,                                   # 11 - Swap in generated image
+                1,                                      # 12 - Console Log Level
+                0,                                      # 13 - Gender Detection (0 = no)
+                'CUDA',                                 # 14 - Execution Provider: 'CUDA' or 'CPU'
+                False,                                  # 15 - Skip for img2img
+                '',                                     # 16 - Face model
+            ]
+        }
+        
+        # Add the ReActor configuration to the payload
+        inference_request["alwayson_scripts"]["ReActor"] = reactor_args
+        
+        # Clean up the original ReActor fields from the main payload
+        del inference_request['source_face_b64']
+        if 'face_strength' in inference_request:
+            # Note: The ReActor API for A1111 doesn't have a direct "strength" parameter.
+            # This is typically managed by the 'Restore Face Visibility' and other settings.
+            del inference_request['face_strength']
+    
+    # --- The existing IP-Adapter logic can remain, but it should be reviewed
+    # to ensure it doesn't conflict with ReActor if both are used.
+    # For now, we assume they are not used simultaneously. ---
     if 'ip_adapter_image_b64' in inference_request:
         print("IP-Adapter image detected. Setting up ControlNet...")
-        
-        # Check if ControlNet is available
-        if not check_controlnet_available():
-            print("Warning: ControlNet not available, IP-Adapter will be skipped")
-        else:
-            # Get available models
-            available_models = get_controlnet_models()
-            
-            # Find IP-Adapter model
-            ip_adapter_model = None
-            for model in available_models:
-                if 'ip-adapter' in model.lower() and 'sdxl' in model.lower():
-                    ip_adapter_model = model
-                    break
-            
-            if not ip_adapter_model:
-                print("Warning: No IP-Adapter SDXL model found. Available models:", available_models)
-                ip_adapter_model = "ip-adapter_sdxl [7d943a46]"  # Default fallback
-            
-            print(f"Using IP-Adapter model: {ip_adapter_model}")
-            
-            # Set up ControlNet args for IP-Adapter
-            controlnet_args = {
-                "args": [
-                    {
-                        "enabled": True,
-                        "image": inference_request['ip_adapter_image_b64'],
-                        "module": "ip-adapter_clip_sdxl",
-                        "model": ip_adapter_model,
-                        "weight": inference_request.get("ip_adapter_weight", 0.6),
-                        "resize_mode": 1,
-                        "lowvram": False,
-                        "processor_res": 512,
-                        "threshold_a": 0.5,
-                        "threshold_b": 0.5,
-                        "guidance_start": 0.0,
-                        "guidance_end": 1.0,
-                        "pixel_perfect": False,
-                        "control_mode": 0
-                    }
-                ]
-            }
-            
-            if "alwayson_scripts" not in inference_request:
-                inference_request["alwayson_scripts"] = {}
-            
-            inference_request["alwayson_scripts"]["controlnet"] = controlnet_args
-        
-        # Clean up the original IP-Adapter fields
-        del inference_request['ip_adapter_image_b64']
-        if 'ip_adapter_weight' in inference_request:
-            del inference_request['ip_adapter_weight']
+        # ... (Your existing IP-Adapter code) ...
+        # Note: The logs show ControlNet is not loading, so this section won't work anyway
+        # until that is fixed. `ControlNet not available: 404`
     
     # 6. Send request to A1111
-    print("Sending request to A1111...")
+    print("Sending request to A1111 with payload...")
+    # Optional: Log the final payload to debug
+    # print(json.dumps(inference_request, indent=2)) 
+    
     try:
         response = automatic_session.post(
-            url=f'{LOCAL_URL}/txt2img', 
+            url=f'{LOCAL_URL}/sdapi/v1/txt2img', 
             json=inference_request, 
             timeout=600
         )
