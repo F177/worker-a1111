@@ -32,7 +32,7 @@ S3_BUCKET_NAME = os.environ.get('S3_FACES_BUCKET_NAME') # Corrigido para corresp
 # --- Face Analysis Setup ---
 face_analyzer = None
 try:
-    face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+    face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider'])
     face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
     print("Analisador de rosto inicializado com sucesso")
 except Exception as e:
