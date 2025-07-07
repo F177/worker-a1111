@@ -39,17 +39,13 @@ RUN cd extensions && \
 RUN pip uninstall -y onnxruntime
 
 # Instala todas as dependências do Python de uma vez com as versões corretas para GPU
-# --- FIX APPLIED HERE ---
 RUN pip install --no-cache-dir \
-    # FIX: Pin numpy to a version before 2.0 to ensure compatibility with onnxruntime
-    numpy<2 \
     insightface==0.7.3 \
     onnxruntime-gpu==1.18.0 \
-    boto3==1.34.131 \
-    # FIX: Use a valid, existing version of the runpod library
-    runpod==1.7.12 \
+    boto3 \
+    runpod \
     xformers==0.0.24 \
-    opencv-python==4.9.0.80 \
+    opencv-python \
     albumentations==1.3.1 \
     protobuf==3.20.3
 
@@ -91,7 +87,6 @@ RUN \
     wget -O /stable-diffusion-webui/models/GFPGAN/parsing_parsenet.pth "https://github.com/xinntao/facexlib/releases/download/v0.2.2/parsing_parsenet.pth"
 
 # Força o download e cache dos modelos do insightface ('buffalo_l') durante o build
-# This command will now succeed because of the numpy fix above.
 RUN python3 -c "from insightface.app import FaceAnalysis; app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']); app.prepare(ctx_id=0, det_size=(640, 640))"
 
 # Pré-inicializa o A1111 para baixar outras dependências
