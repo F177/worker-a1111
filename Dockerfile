@@ -96,7 +96,7 @@ RUN pip uninstall -y onnxruntime && \
     insightface==0.7.3 \
     onnxruntime-gpu==1.18.0 \
     boto3==1.34.131 \
-    runpod==2.6.1 \
+    runpod==1.7.11 \
     xformers==0.0.24 \
     opencv-python==4.9.0.80 \
     albumentations==1.3.1 \
