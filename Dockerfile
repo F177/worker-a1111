@@ -24,6 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     libgoogle-perftools4 \
     libtcmalloc-minimal4 \
+    # --- ALTERAÇÃO: Adicionado 'unzip' para extrair o buffalo_l.zip ---
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Clona o Stable Diffusion WebUI
@@ -38,14 +40,17 @@ RUN cd extensions && \
 # Desinstala onnxruntime padrão para garantir que a versão GPU seja usada
 RUN pip uninstall -y onnxruntime
 
+# --- ALTERAÇÃO: Corrige a instalação dos pacotes Python ---
 # Instala todas as dependências do Python de uma vez com as versões corretas para GPU
 RUN pip install --no-cache-dir \
+    # FIX: Trava a versão do numpy para 1.26.4, como solicitado
+    numpy==1.26.4 \
     insightface==0.7.3 \
     onnxruntime-gpu==1.18.0 \
-    boto3 \
-    runpod \
+    boto3==1.34.131 \
+    runpod==1.7.12 \
     xformers==0.0.24 \
-    opencv-python \
+    opencv-python==4.9.0.80 \
     albumentations==1.3.1 \
     protobuf==3.20.3
 
@@ -86,8 +91,16 @@ RUN \
     wget -O /stable-diffusion-webui/models/GFPGAN/parsing_bisenet.pth "https://github.com/xinntao/facexlib/releases/download/v0.2.0/parsing_bisenet.pth" && \
     wget -O /stable-diffusion-webui/models/GFPGAN/parsing_parsenet.pth "https://github.com/xinntao/facexlib/releases/download/v0.2.2/parsing_parsenet.pth"
 
-# Força o download e cache dos modelos do insightface ('buffalo_l') durante o build
-RUN python3 -c "from insightface.app import FaceAnalysis; app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']); app.prepare(ctx_id=0, det_size=(640, 640))"
+# --- ALTERAÇÃO: Adiciona o download e extração explícita do buffalo_l ---
+# O insightface espera que os modelos estejam no diretório /root/.insightface/models/
+RUN mkdir -p /root/.insightface/models && \
+    wget -O /root/buffalo_l.zip "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip" && \
+    unzip /root/buffalo_l.zip -d /root/.insightface/models/ && \
+    rm /root/buffalo_l.zip
+
+# --- ALTERAÇÃO: Remove o comando antigo que estava falhando ---
+# A linha abaixo foi removida pois o download agora é feito explicitamente acima.
+# RUN python3 -c "from insightface.app import FaceAnalysis; app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']); app.prepare(ctx_id=0, det_size=(640, 640))"
 
 # Pré-inicializa o A1111 para baixar outras dependências
 WORKDIR /stable-diffusion-webui
