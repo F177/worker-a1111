@@ -66,8 +66,7 @@ RUN mkdir -p \
     models/insightface \
     models/GFPGAN \
     models/Codeformer \
-    models/VAE \
-    models/VAE-approx
+    models/VAE
 
 # Baixa todos os modelos e dependências em uma única camada para otimizar o build
 RUN \
@@ -83,11 +82,8 @@ RUN \
     # Modelo de faceswap do ReActor
     wget -O /stable-diffusion-webui/models/insightface/inswapper_128.onnx "https://huggingface.co/Fabricioi/modelorealista/resolve/main/inswapper_128.onnx" && \
     \
-    # Modelo VAE oficial para SDXL
+    # Modelo VAE oficial para SDXL (evita download do VAE-approx)
     wget -O /stable-diffusion-webui/models/VAE/sdxl_vae.safetensors "https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors" && \
-    \
-    # --- FIX: Pre-download the approximate VAE model to prevent runtime downloads ---
-    wget -O /stable-diffusion-webui/models/VAE-approx/vaeapprox-sdxl.pt "https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl.vae.safetensors" && \
     \
     # Modelos de restauração de face (GFPGAN e CodeFormer)
     wget -O /stable-diffusion-webui/models/Codeformer/codeformer-v0.1.0.pth "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth" && \
