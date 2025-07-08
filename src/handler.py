@@ -48,7 +48,7 @@ s3_client = boto3.client('s3')
 
 # Setup Face Analyzer
 try:
-    face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+    face_analyzer = insightface.app.FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider'])
     face_analyzer.prepare(ctx_id=0, det_size=(640, 640))
     print("Face analyzer initialized successfully")
 except Exception as e:

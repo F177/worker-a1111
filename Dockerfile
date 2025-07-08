@@ -100,7 +100,7 @@ RUN mkdir -p /root/.insightface/models && \
 
 # --- ALTERAÇÃO: Remove o comando antigo que estava falhando ---
 # A linha abaixo foi removida pois o download agora é feito explicitamente acima.
-# RUN python3 -c "from insightface.app import FaceAnalysis; app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']); app.prepare(ctx_id=0, det_size=(640, 640))"
+# RUN python3 -c "from insightface.app import FaceAnalysis; app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider']); app.prepare(ctx_id=0, det_size=(640, 640))"
 
 # Pré-inicializa o A1111 para baixar outras dependências
 WORKDIR /stable-diffusion-webui
