@@ -91,6 +91,11 @@ RUN \
     wget -O /stable-diffusion-webui/models/GFPGAN/parsing_bisenet.pth "https://github.com/xinntao/facexlib/releases/download/v0.2.0/parsing_bisenet.pth" && \
     wget -O /stable-diffusion-webui/models/GFPGAN/parsing_parsenet.pth "https://github.com/xinntao/facexlib/releases/download/v0.2.2/parsing_parsenet.pth"
 
+    # Add this command to your Dockerfile before the final CMD or ENTRYPOINT
+RUN wget -O /stable-diffusion-webui/models/insightface/models/buffalo_l.zip https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip && \
+    unzip /stable-diffusion-webui/models/insightface/models/buffalo_l.zip -d /stable-diffusion-webui/models/insightface/models/ && \
+    rm /stable-diffusion-webui/models/insightface/models/buffalo_l.zip
+# ==============================================================================
 # --- ALTERAÇÃO: Adiciona o download e extração explícita do buffalo_l ---
 # O insightface espera que os modelos estejam no diretório /root/.insightface/models/
 RUN mkdir -p /root/.insightface/models && \
