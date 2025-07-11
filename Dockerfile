@@ -105,14 +105,13 @@ RUN mkdir -p /root/.insightface/models && \
 RUN \
     # R-ESRGAN models for upscaling
     wget -O /stable-diffusion-webui/models/ESRGAN/RealESRGAN_x4plus.pth "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth" && \
-    wget -O /stable-diffusion-webui/models/ESRGAN/RealESRGAN_x4plus_anime_6B.pth "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.1/RealESRGAN_x4plus_anime_6B.pth" && \
     \
     # --- ADDED FOR NEW LAMBDA ---
     # Adiciona o upscaler de alta qualidade que a nova lambda usa por padrão
     wget -O /stable-diffusion-webui/models/ESRGAN/4x-UltraSharp.pth "https://huggingface.co/lokCX/4x-Ultrasharp/resolve/main/4x-UltraSharp.pth" && \
     \
     # Better face detection model
-    wget -O /stable-diffusion-webui/models/insightface/det_10g.onnx "https://github.com/deepinsight/insightface/releases/download/v0.7/det_10g.onnx"
+    wget -O /stable-diffusion-webui/models/insightface/det_10g.onnx "https://huggingface.co/Fabricioi/modelorealista/resolve/main/det_10g.onnx"
 
 # Pré-inicializa o A1111 para baixar outras dependências
 WORKDIR /stable-diffusion-webui
