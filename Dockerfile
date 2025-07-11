@@ -63,6 +63,7 @@ RUN mkdir -p \
     models/insightface \
     models/GFPGAN \
     models/Codeformer \
+    models/ESRGAN \
     models/VAE
 
 # Baixa todos os modelos e dependências em uma única camada para otimizar o build
@@ -78,6 +79,10 @@ RUN \
     \
     # Modelo de faceswap do ReActor
     wget -O /stable-diffusion-webui/models/insightface/inswapper_128.onnx "https://huggingface.co/Fabricioi/modelorealista/resolve/main/inswapper_128.onnx" && \
+    \
+    # --- ADDED FOR NEW LAMBDA ---
+    # Adiciona o modelo de faceswap de maior qualidade que a nova lambda usa por padrão
+    wget -O /stable-diffusion-webui/models/insightface/inswapper_128_fp16.onnx "https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/inswapper_128_fp16.onnx" && \
     \
     # Modelo VAE oficial para SDXL (evita download do VAE-approx)
     wget -O /stable-diffusion-webui/models/VAE/sdxl_vae.safetensors "https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors" && \
@@ -95,6 +100,19 @@ RUN mkdir -p /root/.insightface/models && \
     wget -O /root/buffalo_l.zip "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip" && \
     unzip /root/buffalo_l.zip -d /root/.insightface/models/ && \
     rm /root/buffalo_l.zip
+
+# Additional models for better face swapping quality
+RUN \
+    # R-ESRGAN models for upscaling
+    wget -O /stable-diffusion-webui/models/ESRGAN/RealESRGAN_x4plus.pth "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth" && \
+    wget -O /stable-diffusion-webui/models/ESRGAN/RealESRGAN_x4plus_anime_6B.pth "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.1/RealESRGAN_x4plus_anime_6B.pth" && \
+    \
+    # --- ADDED FOR NEW LAMBDA ---
+    # Adiciona o upscaler de alta qualidade que a nova lambda usa por padrão
+    wget -O /stable-diffusion-webui/models/ESRGAN/4x-UltraSharp.pth "https://huggingface.co/lokCX/4x-Ultrasharp/resolve/main/4x-UltraSharp.pth" && \
+    \
+    # Better face detection model
+    wget -O /stable-diffusion-webui/models/insightface/det_10g.onnx "https://github.com/deepinsight/insightface/releases/download/v0.7/det_10g.onnx"
 
 # Pré-inicializa o A1111 para baixar outras dependências
 WORKDIR /stable-diffusion-webui
