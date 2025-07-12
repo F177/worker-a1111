@@ -84,7 +84,7 @@ RUN \
     # Adiciona o modelo de faceswap de maior qualidade que a nova lambda usa por padrão
     wget -O /stable-diffusion-webui/models/insightface/inswapper_128_fp16.onnx "https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/inswapper_128_fp16.onnx" && \
     \
-    # Modelo VAE oficial para SDXL (evita download do VAE-approx)
+    # Modelo VAE oficial para SDXL (evita download do VAE-approx).
     wget -O /stable-diffusion-webui/models/VAE/sdxl_vae.safetensors "https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors" && \
     \
     # Modelos de restauração de face (GFPGAN e CodeFormer)
