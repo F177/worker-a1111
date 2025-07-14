@@ -98,11 +98,18 @@ RUN \
 # --- Adiciona o download e extração explícita do buffalo_l e cria o symlink ---
 # O insightface espera que os modelos estejam no diretório /root/.insightface/models/
 # O ReActor espera que os modelos estejam no diretório /stable-diffusion-webui/models/insightface/models/
-RUN mkdir -p /root/.insightface/models && \
+# ==============================================================================
+# --- CORREÇÃO: Download e extração do buffalo_l para o caminho correto ---
+#
+# O insightface espera que os modelos estejam no diretório /root/.insightface/models/
+# E o ReActor espera um link simbólico em /stable-diffusion-webui/models/insightface/models/
+#
+RUN mkdir -p /root/.insightface/models/buffalo_l && \
+    mkdir -p /stable-diffusion-webui/models/insightface/models && \
     wget -O /root/buffalo_l.zip "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip" && \
-    unzip /root/buffalo_l.zip -d /root/.insightface/models/ && \
+    unzip /root/buffalo_l.zip -d /root/.insightface/models/buffalo_l/ && \
     rm /root/buffalo_l.zip && \
-    ln -s /root/.insightface/models/buffalo_l /stable-diffusion-webui/models/insightface/models/buffalo_l
+    ln -s /root/.insightface/models/buffalo_l /stable-diffusion-webui/models/insightface/models/
 
 # Additional models for better face swapping quality
 RUN \
