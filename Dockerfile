@@ -95,12 +95,14 @@ RUN \
     wget -O /stable-diffusion-webui/models/GFPGAN/GFPGANv1.4.pth "https://github.com/TencentARC/GFPGAN/releases/download/v1.3.0/GFPGANv1.4.pth"
 
 # ==============================================================================
-# --- Adiciona o download e extração explícita do buffalo_l ---
+# --- Adiciona o download e extração explícita do buffalo_l e cria o symlink ---
 # O insightface espera que os modelos estejam no diretório /root/.insightface/models/
+# O ReActor espera que os modelos estejam no diretório /stable-diffusion-webui/models/insightface/models/
 RUN mkdir -p /root/.insightface/models && \
     wget -O /root/buffalo_l.zip "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip" && \
     unzip /root/buffalo_l.zip -d /root/.insightface/models/ && \
-    rm /root/buffalo_l.zip
+    rm /root/buffalo_l.zip && \
+    ln -s /root/.insightface/models/buffalo_l /stable-diffusion-webui/models/insightface/models/buffalo_l
 
 # Additional models for better face swapping quality
 RUN \
